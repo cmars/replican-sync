@@ -109,19 +109,32 @@ function M.DirIndex:_init(path)
 end
 
 function M.get_dir_index(path)
-    local spread = {}
+    local root_index = M.DirIndex(path)
+    local dir_index_map = {}
+    dir_index_map[path]=root_index
+    local dir_index = nil
     
     for root, subdirs, files in dir.walk(path) do
-        table.insert(spread, M.DirIndex(root))
+        dir_index = dir_index_map[root]
         
+        local fpath
         for i, f in pairs(files) do
-            local fpath = plpath.join(root, f)
-            table.insert(spread, M.get_file_index(fpath))
+            fpath = plpath.join(root, f)
+            table.insert(dir_index.files, M.get_file_index(fpath))
         end
-    
+        
+        local dpath
+        local sub_index
+        for i, d in pairs(subdirs) do
+            dpath = plpath.join(root, d)
+            sub_index = M.DirIndex(dpath)
+            dir_index_map[dpath] = sub_index
+            table.insert(dir_index.dirs, sub_index)
+        end
+        
     end
     
-    return spread
+    return root_index
 end
 
 return M

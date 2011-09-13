@@ -1,9 +1,12 @@
 
-local io=require"io"
 require"luarocks.loader"
 require"lunit"
-local pairs=pairs
+
+local io=require"io"
+local json=require"cjson"
 local blocks=require"blocks"
+
+local pairs=pairs
 
 module("test_replican", lunit.testcase)
 
@@ -14,9 +17,12 @@ end
 
 function test_dir_index()
     local result = blocks.get_dir_index("testroot")
+    
+    io.write(json.encode(result))
+    --[[--
     for i, index in pairs(result) do
         io.write(index.path .. "\n")
-    end
+    --]]--
 end
 
 
