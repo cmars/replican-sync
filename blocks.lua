@@ -55,14 +55,14 @@ end
 
 M.FileIndex = class()
 
-function M.FileIndex:_init(path)
-    self.path = path
+function M.FileIndex:_init(name)
+    self.name = name
     self.strong = nil
     self.blocks = {}
 end
 
 function M.get_file_index(path)
-    local index = M.FileIndex(path)
+    local index = M.FileIndex(plpath.basename(path))
     local f = io.open(path, "r")
     local block_num = 1
     local buf
@@ -101,15 +101,15 @@ end
 
 M.DirIndex = class()
 
-function M.DirIndex:_init(path)
-    self.path = path
+function M.DirIndex:_init(name)
+    self.name = name
     self.dirs = {}
     self.files = {}
     self.strong = nil
 end
 
 function M.get_dir_index(path)
-    local root_index = M.DirIndex(path)
+    local root_index = M.DirIndex(plpath.basename(path))
     local dir_index_map = {}
     dir_index_map[path]=root_index
     local dir_index = nil
@@ -127,14 +127,14 @@ function M.get_dir_index(path)
         local sub_index
         for i, d in pairs(subdirs) do
             dpath = plpath.join(root, d)
-            sub_index = M.DirIndex(dpath)
+            sub_index = M.DirIndex(plpath.basename(dpath))
             dir_index_map[dpath] = sub_index
             table.insert(dir_index.dirs, sub_index)
         end
         
     end
     
-    return root_index
+    return dir_index_map, root_index
 end
 
 return M
