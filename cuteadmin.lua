@@ -41,19 +41,13 @@ function M.CuteAdmin:handler(socket)
     self.linda:send(msg.command, msg)
     resp = self.linda:receive(0.001, respkey)
     while not resp do
-        coroutine.yield()
         resp = self.linda:receive(0.001, respkey)
     end
     
     if resp then
-        copas.send(json.encode(resp))
+        copas.send(socket, json.encode(resp))
     end
     
-end
-
-function M.start(linda, port)
-    local cuteadmin = M.CuteAdmin(port)
-    cuteadmin:run(linda)
 end
 
 return M

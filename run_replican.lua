@@ -1,15 +1,29 @@
 
 require"luarocks.loader"
-local lanes=require"lanes"
-local cuteadmin=require"cuteadmin"
-local treekeeper=require"treekeeper"
+require"lanes"
 
 local linda = lanes.linda()
 
-tk_h = lanes.gen("*", treekeeper.start)(linda, "/var/tmp")
+local function run_treekeeper(root)
+    print"hi"
+    local treekeeper=require"treekeeper"
+    print"hi"
+    local tk = treekeeper.TreeKeeper(root)
+    tk:run(linda)
+end
 
-ca_h = lanes.gen("*", cuteadmin.start)(linda, 9009)
+local function run_cuteadmin(port)
+    local cuteadmin=require"cuteadmin"
+    local ca = cuteadmin.CuteAdmin(port)
+    ca:run(linda)
+end
 
-ca_h:join()
+tk_h = lanes.gen("*", run_treekeeper)("/home/casey/sketchbook")
+
+ca_h = lanes.gen("*", run_cuteadmin)(9009)
+
+print(ca_h[1], tk_h[1])
+
 tk_h:join()
+ca_h:join()
 

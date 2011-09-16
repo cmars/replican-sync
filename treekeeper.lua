@@ -13,7 +13,7 @@ function M.TreeKeeper:_init(root)
 end
 
 function M.TreeKeeper:run(linda)
-    io.write("treekeeper starting...\n")
+    print("treekeeper starting...\n")
     self.linda = linda
     local msg
     local key
@@ -49,11 +49,6 @@ end
 function M.TreeKeeper:get_block(msg)
     local path = self:get_local_path(msg.path)
     return blocks.get_file_block(path, msg.block_nums)
-end
-
-function M.start(linda, root)
-    local treekeeper = M.TreeKeeper(root)
-    treekeeper:run(linda)
 end
 
 return M
