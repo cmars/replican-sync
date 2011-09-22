@@ -17,6 +17,7 @@ function M.TreeKeeper:run(linda)
     self.linda = linda
     local msg
     local key
+    local not_ready_msg = {status="error", reason="currently unavailable"}
     
     lanes.timer(linda, "reindex", 3, 300)
     
@@ -25,15 +26,17 @@ function M.TreeKeeper:run(linda)
         msg, key = linda:receive("get-tree", "get-block", "reindex")
         
         if key == "get-tree" then
-            resp = self:get_tree(msg)
+            resp = self:get_tree(msg) or not_ready_msg
         elseif key == "get-block" then
-            resp = self:get_block(msg)
-        elseif key == "reindex" then
-            io.write("reindexing...")
-            self.tree = blocks.get_dir_index(self.root)
-            io.write("reindexing complete\n")
-        elseif key == "shutdown" then
-            return
+            resp = self:get_block(msg) or not_ready_msg
+        else
+            if key == "reindex" then
+                io.write("reindexing...")
+                self.tree = blocks.get_dir_index(self.root)
+                io.write("reindexing complete\n")
+            elseif key == "shutdown" then
+                return
+            end
         end
         
         if resp then

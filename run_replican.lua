@@ -12,18 +12,18 @@ local function run_treekeeper(root)
     tk:run(linda)
 end
 
-local function run_cuteadmin(port)
-    local cuteadmin=require"cuteadmin"
-    local ca = cuteadmin.CuteAdmin(port)
-    ca:run(linda)
+local function run_server(port)
+    local server=require"server"
+    local s = server.Server(port)
+    s:run(linda)
 end
 
-tk_h = lanes.gen("*", run_treekeeper)("/home/casey/sketchbook")
+tk_h = lanes.gen("*", run_treekeeper)("/home/casey/src-lua/replican/testroot")
 
-ca_h = lanes.gen("*", run_cuteadmin)(9009)
+s_h = lanes.gen("*", run_server)(9009)
 
-print(ca_h[1], tk_h[1])
+print(s_h[1], tk_h[1])
 
 tk_h:join()
-ca_h:join()
+s_h:join()
 
