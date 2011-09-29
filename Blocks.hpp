@@ -9,6 +9,7 @@
 #include <vector>
 #include <boost/smart_ptr.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/variant.hpp>
 //#include <boost/ptr_container/ptr_container.hpp>
 
 namespace replican {
@@ -40,22 +41,19 @@ public:
     
 };
 
-/*
-class Node;
-class Block;
-class File;
-class Dir;
-*/
-
 class Node;
 class Block;
 class File;
 class Dir;
 
-typedef boost::shared_ptr<Node> NodePtr;
 typedef boost::shared_ptr<Block> BlockPtr;
 typedef boost::shared_ptr<File> FilePtr;
 typedef boost::shared_ptr<Dir> DirPtr;
+typedef boost::variant<BlockPtr, FilePtr, DirPtr> NodePtr;
+
+#define BLOCK_PTR 0
+#define FILE_PTR 1
+#define DIR_PTR 2
 
 class Node {
 public:
@@ -63,7 +61,7 @@ public:
     
     inline const std::string& get_strong() { return strong; }
     
-    virtual const NodePtr get_parent() = 0;
+    virtual NodePtr get_parent() = 0;
     
     std::vector<NodePtr>& get_children() { return children; }
     
@@ -77,7 +75,9 @@ public:
     Block(const FilePtr _file, int _offset);
     virtual ~Block();
     
-    inline virtual const NodePtr parent() { return NodePtr(file.get()); }
+    inline virtual NodePtr get_parent() { return NodePtr(file); }
+    
+//    inline virtual const NodePtr parent() { return NodePtr(file.get()); }
     
 private:
     const FilePtr file;
@@ -90,7 +90,13 @@ public:
     FsNode(const DirPtr _dir, const std::string& _name);
     virtual ~FsNode() = 0;
     
-    inline virtual const NodePtr parent() { return NodePtr(dir.get()); }
+    inline virtual NodePtr get_parent() { return NodePtr(dir); }
+    
+    inline const std::string& get_name() { return name; }
+    
+    boost::filesystem::path get_path();
+    
+//    inline virtual const NodePtr parent() { return NodePtr(dir.get()); }
     
 protected:
     const DirPtr dir;
@@ -112,7 +118,35 @@ public:
     
 };
 
-DirPtr index(boost::filesystem::path& root_path);
+DirPtr index_dir(boost::filesystem::path& root_path);
+
+inline bool is_null(const NodePtr& nodePtr) {
+    switch (nodePtr.which()) {
+    case BLOCK_PTR:
+        return !boost::get<BlockPtr>(nodePtr).get();
+    case FILE_PTR:
+        return !boost::get<FilePtr>(nodePtr).get();
+    case DIR_PTR:
+        return !boost::get<DirPtr>(nodePtr).get();
+    default:
+        throw new std::runtime_error("Invalid NodePtr variant");
+    }
+}
+
+inline NodePtr get_parent(const NodePtr& nodePtr) {
+    switch (nodePtr.which()) {
+    case BLOCK_PTR:
+        return boost::get<BlockPtr>(nodePtr)->get_parent();
+    case FILE_PTR:
+        return boost::get<FilePtr>(nodePtr)->get_parent();
+    case DIR_PTR:
+        return boost::get<DirPtr>(nodePtr)->get_parent();
+    default:
+        throw new std::runtime_error("Invalid NodePtr variant");
+    }
+}
+
+//FilePtr index_file(boost::filesystem::path& file_path);
 
 /*
 function M.bintohex(s)

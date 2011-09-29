@@ -9,6 +9,6 @@ int main(int argc, char** argv) {
     }
     
     boost::filesystem::path root(argv[1]);
-    replican::index(root);
+    replican::index_dir(root);
 }
 
