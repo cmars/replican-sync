@@ -2,6 +2,7 @@
 #include "Blocks.hpp"
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/pointer_cast.hpp>
 #include <iostream>
 #include <stack>
 
@@ -9,7 +10,7 @@ using namespace replican;
 namespace fs = boost::filesystem;
 namespace sys = boost::system;
 
-static DirPtr nullDir;
+static NodePtr nullNode;
 
 WeakChecksum::WeakChecksum(): a(0), b(0) {}
 
@@ -26,17 +27,15 @@ void WeakChecksum::update(int len, char* buf) {
 
 Node::~Node() {}
 
-Block::Block(const FilePtr _file, int _offset): file(_file), offset(_offset) {}
+Block::Block(int _offset): Node(), offset(_offset) {}
 
 Block::~Block() {}
 
-FsNode::FsNode(const std::string& _name): dir(DirPtr(nullDir.get())), name(_name) {}
-
-FsNode::FsNode(const DirPtr _dir, const std::string& _name): dir(_dir), name(_name) {}
+FsNode::FsNode(const std::string& _name): Node(), name(_name) {}
 
 FsNode::~FsNode() {}
 
-File::File(const DirPtr _dir, const std::string& _name): FsNode(_dir, _name) {}
+File::File(const std::string& _name): FsNode(_name) {}
 
 File::~File() {}
 
@@ -44,18 +43,9 @@ fs::path FsNode::get_path() {
     std::vector<std::string> parts;
     parts.push_back(name);
     
-    for (NodePtr current = get_parent(); !is_null(current); current = replican::get_parent(current)) {
-        switch(current.which()) {
-        case FILE_PTR:
-            parts.push_back(boost::get<FilePtr>(current)->get_name());
-            break;
-            
-        case DIR_PTR:
-            parts.push_back(boost::get<DirPtr>(current)->get_name());
-            break;
-        
-        // TODO: handle this unlikely turn of events???
-        }
+    for (NodePtr current = get_parent(); current.get(); current = current->get_parent()) {
+        FsNode& fsNode = static_cast<FsNode&>(*current);
+        parts.push_back(fsNode.get_name());
     }
     
     fs::path result;
@@ -68,8 +58,6 @@ fs::path FsNode::get_path() {
 
 Dir::Dir(const std::string& _name): FsNode(_name) {}
 
-Dir::Dir(const DirPtr _dir, const std::string& _name): FsNode(_dir, _name) {}
-
 Dir::~Dir() {}
 
 DirPtr replican::index_dir(fs::path& root_path) {
@@ -77,31 +65,30 @@ DirPtr replican::index_dir(fs::path& root_path) {
     dirstack.push(root_path);
     
     DirPtr root(new Dir(root_path.filename().string()));
-    DirPtr parent;
-    DirPtr current(root);
+    NodePtr parent;
+    NodePtr current(root);
     
     while (!dirstack.empty()) {
         fs::path current_path = dirstack.top();
         dirstack.pop();
         
         if (parent.get()) {
-            current.reset(new Dir(parent, current_path.filename().string()));
-            parent->get_children().push_back(current);
+            current.reset(new Dir(current_path.filename().string()));
+            parent->add_child(current);
         }
         
         try {
             fs::directory_iterator end, iter, start(current_path);
             for (iter = start; iter != end; ++iter) {
                 const fs::path entry = *iter;
-                std::cout << entry << std::endl;
+//                std::cout << entry << std::endl;
                 try {
                     if (fs::is_directory(entry)) {
                         dirstack.push(entry);
                     }
                     else if (fs::is_regular_file(entry)) {
-                        FilePtr file(new File(current, entry.string()));
-//                        file->index();
-                        current->get_children().push_back(file);
+                        NodePtr file(new File(entry.string()));
+                        current->add_child(file);
                     }
                 }
                 catch (const fs::filesystem_error& err) {
@@ -116,7 +103,18 @@ DirPtr replican::index_dir(fs::path& root_path) {
         parent = current;
     }
     
-    return nullDir;
+    return root;
+}
+
+FilePtr index_file(fs::path& file) {
+    char buf[BLOCKSIZE];
+    FilePtr f(new File(file.filename()));
+    /*
+    std::ifstream ifs(file.string(), ios::in | ios::binary);
+    
+    while (
+    ifs.read(buf, BLOCKSIZE);
+    */
 }
 
 
