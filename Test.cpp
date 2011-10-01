@@ -4,9 +4,12 @@
 //#define BOOST_TEST_MAIN
 #include <boost/test/unit_test.hpp>
 
+#include <boost/filesystem.hpp>
+
 #include <iostream>
 
 using namespace replican;
+namespace fs = boost::filesystem;
 
 BOOST_AUTO_TEST_CASE(test_declarative_tree) {
     
@@ -42,11 +45,24 @@ BOOST_AUTO_TEST_CASE(test_declarative_tree) {
     
 }
 
-BOOST_AUTO_TEST_CASE(replican_test2) {
+BOOST_AUTO_TEST_CASE(file_hashing) {
+    fs::path mp4file("./testroot/My Music/0 10k 30.mp4");
     
-    std::cout << "hello world2" << std::endl;
+    FilePtr f = replican::index_file(mp4file);
+    BOOST_CHECK_EQUAL(f->get_strong(), "5ab3e5d621402e5894429b5f595a1e2d7e1b3078");
     
-    BOOST_CHECK(true);
+    BlockPtr b = boost::static_pointer_cast<Block>(f->get_children()[0]);
+    BOOST_CHECK_EQUAL(b->get_strong(), "d1f11a93449fa4d3f320234743204ce157bbf1f3");
+    
+    b = boost::static_pointer_cast<Block>(f->get_children()[1]);
+    BOOST_CHECK_EQUAL(b->get_strong(), "eabbe570b21cd2c5101a18b51a3174807fa5c0da");
+}
+
+BOOST_AUTO_TEST_CASE(tree_hashing) {
+    fs::path testroot_path("./testroot");
+    DirPtr testroot = replican::index_dir(testroot_path);
+    
+    BOOST_CHECK_EQUAL(testroot->get_strong(), "ddf07ff332d0493de9ab208bf9a060fde4c8186");
 }
 
 

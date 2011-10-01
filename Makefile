@@ -5,11 +5,11 @@ CFLAGS=-I$(HOME)/local/include -fPIC -g -O2
 CXX=g++
 CXXFLAGS=-I$(HOME)/local/include -fPIC -g -O2
 
-LIBS=-Wl,-Bstatic -lboost_filesystem -lboost_system -Wl,-Bdynamic
+LIBS=-Wl,-Bstatic -lboost_filesystem -lboost_system -lcryptopp -Wl,-Bdynamic -lcrypto
 LDFLAGS=-fPIC -L$(HOME)/local/lib
 
 SHARED=libreplican.so
-SHARED_OBJS=Blocks.o sha1.o
+SHARED_OBJS=Blocks.o
 
 MAIN_OBJS=Main.o
 

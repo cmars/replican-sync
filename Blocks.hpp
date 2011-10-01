@@ -51,28 +51,31 @@ typedef boost::shared_ptr<Node> NodePtr;
 typedef boost::shared_ptr<Block> BlockPtr;
 typedef boost::shared_ptr<File> FilePtr;
 typedef boost::shared_ptr<Dir> DirPtr;
+typedef std::vector<NodePtr> NodePtrVector;
 
 class Node : public boost::enable_shared_from_this<Node> {
 public:
     virtual ~Node() = 0;
     
-    inline const std::string& get_strong() { return strong; }
+    virtual const std::string& get_strong();
     
-    inline bool is_root() { return !parent.get(); }
+    void set_digest(const unsigned char* raw, int len);
     
-    inline NodePtr get_parent() { return parent; }
+    inline bool is_root() const { return !parent.get(); }
+    
+    inline NodePtr get_parent() const { return parent; }
     
     inline void add_child(NodePtr child) { 
         children.push_back(child);
         child->parent = shared_from_this();
     }
     
-    inline const std::vector<NodePtr>& get_children() { return children; }
+    inline const NodePtrVector& get_children() const { return children; }
     
 protected:
     std::string strong;
     NodePtr parent;
-    std::vector<NodePtr> children;
+    NodePtrVector children;
 };
 
 class Block : public Node {
@@ -111,11 +114,21 @@ public:
     Dir(const std::string& _name);
     virtual ~Dir();
     
+    virtual const std::string& get_strong();
+    
 };
 
-DirPtr index_dir(boost::filesystem::path& root_path);
+DirPtr index_dir(const boost::filesystem::path& root_path);
 
-FilePtr index_file(boost::filesystem::path& file_path);
+FilePtr index_file(const boost::filesystem::path& file_path);
+
+}
+
+namespace std {
+
+std::ostream& operator<<(std::ostream& out, const replican::Dir& dir);
+
+}
 
 /*
 inline bool is_null(const NodePtr& nodePtr) {
@@ -349,7 +362,6 @@ function M.get_dir_index(path)
     return root_index
 end
 */
-}
 
 #endif
 
