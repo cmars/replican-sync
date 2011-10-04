@@ -2,7 +2,9 @@
 package blocks
 
 import (
+	"fmt"
 	"os"
+	"crypto/sha1"
 )
 
 const BLOCKSIZE uint = 8192
@@ -39,17 +41,22 @@ func IndexFile(path string) (file *File, err os.Error) {
 	
 	file = new(File)
 	var block *Block
+	var sha1 = sha1.New()
 	
 	for {
 		switch rd, err := f.Read(buf[:]); true {
 		case rd < 0:
 			return nil, err
 		case rd == 0:
+			file.Strong = fmt.Sprintf("%x", sha1.Sum())
 			return file, nil
 		case rd > 0:
 			// update block hashes
 			block = IndexBlock(buf[0:rd])
-			file.blocks = append(file.blocks, block)
+			file.Blocks = append(file.Blocks, block)
+			
+			// update file hash
+			sha1.Write(buf[0:rd])
 		}
 	}
 	
@@ -58,9 +65,15 @@ func IndexFile(path string) (file *File, err os.Error) {
 
 func IndexBlock(buf []byte) (block *Block) {
 	block = new(Block)
+	
 	var weak = new(WeakChecksum)
 	weak.Update(buf)
-	block.weak = weak.Get()
+	block.Weak = weak.Get()
+	
+	var sha1 = sha1.New()
+	sha1.Write(buf)
+	block.Strong = fmt.Sprintf("%x", sha1.Sum())
+	
 	return block
 }
 
@@ -72,17 +85,18 @@ type Node interface {
 }
 
 type Block struct {
-	weak uint
-	strong string
+	Weak uint
+	Strong string
 }
 
 type File struct {
-	name string
-	blocks []*Block
+	Name string
+	Strong string
+	Blocks []*Block
 }
 
 type Dir struct {
-	name string
+	Name string
 }
 
 

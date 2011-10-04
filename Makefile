@@ -1,16 +1,10 @@
+GOROOT=$(HOME)/go
 
-ARCH=6
+include $(GOROOT)/src/Make.inc
 
-G=$(HOME)/go/bin/$(ARCH)g
-L=$(HOME)/go/bin/$(ARCH)l
+TARG=replican
+GOFILES=\
+	blocks.go\
 
-fibo:	fibo.6
-	$(L) -o $@ $^
-
-%.6:	%.go
-	$(G) -o $@ $<
-
-clean:
-	$(RM) *.6 fibo
-
+include $(GOROOT)/src/Make.pkg
 
