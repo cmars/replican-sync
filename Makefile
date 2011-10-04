@@ -1,44 +1,16 @@
 
-CC=gcc
-CFLAGS=-I$(HOME)/local/include -fPIC -g -O2
+ARCH=6
 
-CXX=g++
-CXXFLAGS=-I$(HOME)/local/include -fPIC -g -O2
+G=$(HOME)/go/bin/$(ARCH)g
+L=$(HOME)/go/bin/$(ARCH)l
 
-LIBS=-Wl,-Bstatic -lboost_filesystem -lboost_system -lcryptopp -Wl,-Bdynamic -lcrypto
-LDFLAGS=-fPIC -L$(HOME)/local/lib
+fibo:	fibo.6
+	$(L) -o $@ $^
 
-SHARED=libreplican.so
-SHARED_OBJS=Blocks.o
-
-MAIN_OBJS=Main.o
-
-TEST=libreplican_tests.so
-TEST_OBJS=Test.o
-TEST_LIBS=-Wl,-Bstatic -lboost_unit_test_framework -Wl,-Bdynamic $(LIBS)
-
-OBJS=$(SHARED_OBJS) $(TEST_OBJS) $(MAIN_OBJS)
-
-ARTIFACTS=$(SHARED) replican replitests
-
-all: $(ARTIFACTS)
-
-replican: $(MAIN_OBJS) $(SHARED)
-	$(CXX) -o $@ $(MAIN_OBJS) -Wl,-rpath=. -L. $(LDFLAGS) -lreplican $(LIBS)
-
-$(SHARED): $(SHARED_OBJS)
-	$(CXX) -shared -o $@ $(LDFLAGS) $(LIBS) $^
-
-replitests: $(TEST_OBJS) $(SHARED)
-	$(CXX) -o $@ $(TEST_OBJS) -Wl,-rpath=. -L. $(LDFLAGS) -lreplican $(TEST_LIBS)
-	
-%.o:	%.cpp
-	$(CXX) $(CXXFLAGS) -c -o $@ $^
-
-%.o:	%.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+%.6:	%.go
+	$(G) -o $@ $<
 
 clean:
-	$(RM) $(OBJS) $(ARTIFACTS)
+	$(RM) *.6 fibo
 
 
