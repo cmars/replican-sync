@@ -14,7 +14,7 @@ type WeakChecksum struct {
 	b uint
 }
 
-func (weak *WeakChecksum) Update(buf []byte) {
+func (weak *WeakChecksum) Write(buf []byte) {
 	for i := 0; i < len(buf); i++ {
 		weak.a += uint(buf[i]);
 		weak.b += uint(len(buf) - i) * uint(buf[i]);
@@ -67,7 +67,7 @@ func IndexBlock(buf []byte) (block *Block) {
 	block = new(Block)
 	
 	var weak = new(WeakChecksum)
-	weak.Update(buf)
+	weak.Write(buf)
 	block.Weak = weak.Get()
 	
 	var sha1 = sha1.New()
