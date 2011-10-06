@@ -1,0 +1,13 @@
+
+Benchmarking
+============
+
+A simple IndexDir on my home directory ended with process stats:
+ 7847 casey     20   0  103m  66m  612 R 51.9  3.3   2:48.59 replican           
+
+du -sk reveals about 14G size:
+
+14881104	/home/casey
+
+
+
