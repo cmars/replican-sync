@@ -3,10 +3,12 @@ package blocks
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"crypto/sha1"
+	"fmt"
+	"hash"
+	"os"
 	"path/filepath"
+	"strings"
 )
 
 const BLOCKSIZE uint = 8192
@@ -39,27 +41,37 @@ type IndexVisitor struct {
 }
 
 func newVisitor(path string) *IndexVisitor {
+	path = filepath.Clean(path)
+	path = strings.TrimRight(path, "/\\")
+	
 	visitor := new(IndexVisitor)
 	visitor.dirMap = make(map[string]*Dir)
 	visitor.root = new(Dir)
+	visitor.currentDir = visitor.root
 	visitor.dirMap[path] = visitor.root
+	
 	return visitor
 }
 
 func (visitor *IndexVisitor) VisitDir(path string, f *os.FileInfo) bool {
+	path = filepath.Clean(path)
+	
 	dir, hasDir := visitor.dirMap[path]
 	if !hasDir {
 		dir = new(Dir)
 		visitor.dirMap[path] = dir
+		
 		dirname, basename := filepath.Split(path)
+		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
+		
 		dir.name = basename
 		dir.parent = visitor.dirMap[dirname]
+		
+		if dir.parent != nil {
+			dir.parent.subdirs = append(dir.parent.subdirs, dir)
+		}
 	}
-	
-	if dir.parent != nil {
-		dir.parent.subdirs = append(dir.parent.subdirs, dir)
-	}
-	
+		
 	visitor.currentDir = dir;
 	return true
 }
@@ -69,7 +81,6 @@ func (visitor *IndexVisitor) VisitFile(path string, f *os.FileInfo) {
 	if file != nil {
 		file.parent = visitor.currentDir
 		visitor.currentDir.files = append(visitor.currentDir.files, file)
-		fmt.Printf("currentDir=%s currentFile=%s strong=%s\n", visitor.currentDir.name, file.Name(), file.Strong())
 	} else {
 		fmt.Errorf("failed to read file %s: %s", path, err.String())
 	}
@@ -78,7 +89,11 @@ func (visitor *IndexVisitor) VisitFile(path string, f *os.FileInfo) {
 func IndexDir(path string) (dir *Dir, err os.Error) {
 	visitor := newVisitor(path)
 	filepath.Walk(path, visitor, nil)
-	return visitor.root, nil
+	if visitor.root != nil {
+		visitor.root.Strong()
+		return visitor.root, nil
+	}
+	return nil, nil
 }
 
 func IndexFile(path string) (file *File, err os.Error) {
@@ -102,7 +117,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 		case rd < 0:
 			return nil, err
 		case rd == 0:
-			file.strong = fmt.Sprintf("%x", sha1.Sum())
+			file.strong = toHexString(sha1)
 			return file, nil
 		case rd > 0:
 			// update block hashes
@@ -117,6 +132,10 @@ func IndexFile(path string) (file *File, err os.Error) {
 	return nil, nil
 }
 
+func toHexString(hash hash.Hash) string {
+	return fmt.Sprintf("%x", hash.Sum())
+}
+
 func IndexBlock(buf []byte) (block *Block) {
 	block = new(Block)
 	
@@ -126,7 +145,7 @@ func IndexBlock(buf []byte) (block *Block) {
 	
 	var sha1 = sha1.New()
 	sha1.Write(buf)
-	block.strong = fmt.Sprintf("%x", sha1.Sum())
+	block.strong = toHexString(sha1)
 	
 	return block
 }
@@ -203,15 +222,15 @@ func (dir *Dir) Strong() (string) {
 func (dir *Dir) calcStrong() string {
 	var sha1 = sha1.New()
 	sha1.Write(dir.stringBytes())
-	return fmt.Sprintf("%x", sha1.Sum())
+	return toHexString(sha1)
 }
 
 func (dir *Dir) Parent() (Node) { return dir.parent }
 
 func (dir *Dir) Child(i int) (Node) {
-	switch sl := len(dir.subdirs); {
+	switch sl := len(dir.subdirs); true {
 	case i < sl:
-		return dir.subdirs[sl]
+		return dir.subdirs[i]
 	default:
 		return dir.files[i-sl]
 	}
@@ -222,10 +241,10 @@ func (dir *Dir) stringBytes() []byte {
 	buf := bytes.NewBufferString("")
 	
 	for _, subdir := range dir.subdirs {
-		fmt.Fprint(buf, "%s\t%s\td\n", subdir.Strong(), subdir.Name())
+		fmt.Fprintf(buf, "%s\td\t%s\n", subdir.Strong(), subdir.Name())
 	}
 	for _, file := range dir.files {
-		fmt.Fprint(buf, "%s\t%s\tf\n", file.Strong(), file.Name())
+		fmt.Fprintf(buf, "%s\tf\t%s\n", file.Strong(), file.Name())
 	}
 	
 	return buf.Bytes()

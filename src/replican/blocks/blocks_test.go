@@ -3,12 +3,16 @@ package blocks
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
 func TestIndexSomeMp3(t *testing.T) {
 	var f *File
 	var err os.Error
+	
+	cwd, _ := os.Getwd()
+	t.Logf("CWD=%s", cwd)
 	
 	f, err = IndexFile("./testroot/My Music/0 10k 30.mp4")
 	if f == nil {
@@ -29,4 +33,23 @@ func TestIndexSomeMp3(t *testing.T) {
     }
 }
 
+func TestDirIndex(t *testing.T) {
+	dir, _ := IndexDir("testroot/")
+	
+	if dir.Strong() != "10dc111ed3edd17ac89e303e877874aa61b45434" {
+		t.Errorf("Unexpected root directory hash: %s", dir.Strong())
+	}
+	
+	var myMusic FsNode = dir.Child(0).(FsNode)
+	if myMusic.Name() != "My Music" {
+		t.Errorf("Expected My Music, got %s", myMusic.Name())
+	}
+	
+	for i := 0; i < 2; i++ {
+		var mp4file FsNode = myMusic.Child(i).(FsNode)
+		if !strings.HasPrefix(mp4file.Name(), "0 10k 30") {
+			t.Errorf("Unexpected d -> d -> f name: %s", mp4file.Name())
+		}
+	}
+}
 
