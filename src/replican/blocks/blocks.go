@@ -18,6 +18,11 @@ type WeakChecksum struct {
 	b uint
 }
 
+func (weak *WeakChecksum) Reset() {
+	weak.a = 0
+	weak.b = 0
+}
+
 func (weak *WeakChecksum) Write(buf []byte) {
 	for i := 0; i < len(buf); i++ {
 		weak.a += uint(buf[i]);
@@ -136,6 +141,12 @@ func toHexString(hash hash.Hash) string {
 	return fmt.Sprintf("%x", hash.Sum())
 }
 
+func StrongChecksum(buf []byte) string {
+	var sha1 = sha1.New()
+	sha1.Write(buf)
+	return toHexString(sha1)
+}
+
 func IndexBlock(buf []byte) (block *Block) {
 	block = new(Block)
 	
@@ -143,9 +154,7 @@ func IndexBlock(buf []byte) (block *Block) {
 	weak.Write(buf)
 	block.weak = weak.Get()
 	
-	var sha1 = sha1.New()
-	sha1.Write(buf)
-	block.strong = toHexString(sha1)
+	block.strong = StrongChecksum(buf)
 	
 	return block
 }
@@ -258,7 +267,7 @@ func (dir *Dir) ChildCount() (int) { return len(dir.subdirs) + len(dir.files) }
 
 type NodeVisitor func(Node) bool
 
-func Traverse(node Node, visitor NodeVisitor) {
+func Walk(node Node, visitor NodeVisitor) {
 	nodestack := []Node{}
 	nodestack = append(nodestack, node)
 	
@@ -272,5 +281,27 @@ func Traverse(node Node, visitor NodeVisitor) {
 		}
 	}
 }
+
+type BlockIndex struct {
+	WeakMap map[uint]*Block 
+	StrongMap map[string]Node
+}
+
+func IndexBlocks(node Node) (index *BlockIndex) {
+	index = new(BlockIndex)
+	index.WeakMap = make(map[uint]*Block)
+	index.StrongMap = make(map[string]Node)
+	
+	Walk(node, func(current Node) bool {
+		index.StrongMap[current.Strong()] = current
+		if block, isblock := current.(*Block); isblock {
+			index.WeakMap[block.Weak()] = block
+		}
+		return true
+	})
+	
+	return index
+}
+
 
 

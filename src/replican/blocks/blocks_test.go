@@ -58,7 +58,7 @@ func TestVisitDirsOnly(t *testing.T) {
 	collect := []*Dir{}
 	visited := []Node{}
 	
-	Traverse(dir, func(node Node) bool {
+	Walk(dir, func(node Node) bool {
 		visited = append(visited, node)
 		
 		d, ok := node.(*Dir)
@@ -92,7 +92,7 @@ func TestVisitBlocks(t *testing.T) {
 	dir, _ := IndexDir("testroot/")
 	collect := []*Block{}
 	
-	Traverse(dir, func(node Node) bool {
+	Walk(dir, func(node Node) bool {
 		b, ok := node.(*Block)
 		if ok {
 			collect = append(collect, b)
