@@ -11,11 +11,11 @@ import (
 	"strings"
 )
 
-const BLOCKSIZE uint = 8192
+const BLOCKSIZE int = 8192
 
 type WeakChecksum struct {
-	a uint
-	b uint
+	a int
+	b int
 }
 
 func (weak *WeakChecksum) Reset() {
@@ -25,18 +25,19 @@ func (weak *WeakChecksum) Reset() {
 
 func (weak *WeakChecksum) Write(buf []byte) {
 	for i := 0; i < len(buf); i++ {
-		weak.a += uint(buf[i]);
-		weak.b += uint(len(buf) - i) * uint(buf[i]);
+		b := int(buf[i])
+		weak.a += b;
+		weak.b += (len(buf) - i) * b;
 	}
 }
 
-func (weak *WeakChecksum) Get() (uint) {
+func (weak *WeakChecksum) Get() int {
 	return weak.b << 16 | weak.a;
 }
 
 func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
-    weak.a -= uint(removedByte - newByte);
-    weak.b -= uint(removedByte) * BLOCKSIZE - weak.a;
+    weak.a -= int(removedByte) - int(newByte);
+    weak.b -= int(removedByte) * BLOCKSIZE - weak.a;
 }
 
 type indexVisitor struct {
@@ -173,12 +174,12 @@ type FsNode interface {
 }
 
 type Block struct {
-	weak uint
+	weak int
 	strong string
 	parent *File
 }
 
-func (block *Block) Weak() (uint) { return block.weak }
+func (block *Block) Weak() int { return block.weak }
 
 func (block *Block) IsRoot() (bool) { return false }
 
@@ -283,13 +284,13 @@ func Walk(node Node, visitor NodeVisitor) {
 }
 
 type BlockIndex struct {
-	WeakMap map[uint]*Block 
+	WeakMap map[int]*Block 
 	StrongMap map[string]Node
 }
 
 func IndexBlocks(node Node) (index *BlockIndex) {
 	index = new(BlockIndex)
-	index.WeakMap = make(map[uint]*Block)
+	index.WeakMap = make(map[int]*Block)
 	index.StrongMap = make(map[string]Node)
 	
 	Walk(node, func(current Node) bool {

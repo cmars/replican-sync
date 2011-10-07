@@ -16,11 +16,11 @@ type CopyBlock struct {}
 
 type BlockMatch struct {
 	SrcBlock *blocks.Block
-	DstOffset uint
+	DstOffset int64
 }
 
 func MatchFiles(src string, dst string) (matches []*BlockMatch, err os.Error) {
-	dstOffset := 0
+	var dstOffset int64
 	
 	var srcFile *blocks.File
 	srcFile, err = blocks.IndexFile(src)
@@ -55,22 +55,22 @@ SCAN:
 		
 		case rd > 0:
 			blocksize := rd
-			dstOffset += rd
+			dstOffset += int64(rd)
 			window = buf[:rd]
 			
 			dstWeak.Reset()
-			dstWeak.Write(buf[:rd])
+			dstWeak.Write(window[:])
 			
 			for {
 				// Check for a weak checksum match
 				if matchBlock, has := srcBlockIndex.WeakMap[dstWeak.Get()]; has {
 					
 					// Double-check with the strong checksum
-					if blocks.StrongChecksum(buf[:rd]) == matchBlock.Strong() {
+					if blocks.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
 						// map this match
 						matches = append(matches, &BlockMatch{
 							SrcBlock:matchBlock, 
-							DstOffset: uint(dstOffset - blocksize) })
+							DstOffset: dstOffset - int64(blocksize) })
 						break
 					}
 				}
@@ -79,15 +79,20 @@ SCAN:
 				switch srd, err := dstF.Read(sbuf[:]); true {
 				case srd < 0:
 					return nil, err
+					
 				case srd == 0:
 					break SCAN
 				
-				case srd > 0:
-					dstOffset += srd
+				case srd == 1:
+					dstOffset++
 					
 					// Roll the weak checksum & the buffer
-					dstWeak.Roll(buf[0], sbuf[0])
+					dstWeak.Roll(window[0], sbuf[0])
 					window = append(window[1:], sbuf[0])
+					break
+				
+				case srd > 1:
+					return nil, os.NewError("Internal read error trying advance one byte.")
 				}
 			}
 		}
