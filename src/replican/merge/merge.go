@@ -19,20 +19,47 @@ type BlockMatch struct {
 	DstOffset int64
 }
 
-func MatchFiles(src string, dst string) (matches []*BlockMatch, err os.Error) {
-	var dstOffset int64
-	
+type FileMatch struct {
+	SrcSize int64
+	DstSize int64
+	BlockMatches []*BlockMatch
+}
+
+func Match(src string, dst string) (match *FileMatch, err os.Error) {
 	var srcFile *blocks.File
 	srcFile, err = blocks.IndexFile(src)
 	if srcFile == nil {
 		return nil, err
 	}
 	
+	match, err = MatchFile(srcFile, dst)
+	return match, err
+}
+
+func MatchFile(srcFile *blocks.File, dst string) (match *FileMatch, err os.Error) {
 	srcBlockIndex := blocks.IndexBlocks(srcFile)
+	
+	match, err = MatchIndex(srcBlockIndex, dst)
+	if match != nil {
+		match.SrcSize = srcFile.Size()
+	}
+	
+	return match, err
+}
+
+func MatchIndex(srcBlockIndex *blocks.BlockIndex, dst string) (match *FileMatch, err os.Error) {
+	match = new(FileMatch)
+	var dstOffset int64
 	
 	var dstF *os.File
 	dstF, err = os.Open(dst)
 	if dstF == nil {
+		return nil, err
+	}
+	
+	if dstInfo, err := dstF.Stat(); dstInfo != nil {
+		match.DstSize = dstInfo.Size
+	} else {
 		return nil, err
 	}
 	
@@ -68,7 +95,7 @@ SCAN:
 					// Double-check with the strong checksum
 					if blocks.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
 						// map this match
-						matches = append(matches, &BlockMatch{
+						match.BlockMatches = append(match.BlockMatches, &BlockMatch{
 							SrcBlock:matchBlock, 
 							DstOffset: dstOffset - int64(blocksize) })
 						break
@@ -98,7 +125,7 @@ SCAN:
 		}
 	}
 	
-	return matches, nil
+	return match, nil
 }
 
 

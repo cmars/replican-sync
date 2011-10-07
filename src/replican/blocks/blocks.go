@@ -115,6 +115,12 @@ func IndexFile(path string) (file *File, err os.Error) {
 	_, basename := filepath.Split(path)
 	file.name = basename
 	
+	if fileInfo, err := f.Stat(); fileInfo != nil {
+		file.size = fileInfo.Size
+	} else {
+		return nil, err
+	}
+	
 	var block *Block
 	var sha1 = sha1.New()
 	
@@ -193,6 +199,7 @@ func (block *Block) ChildCount() (int) { return 0 }
 
 type File struct {
 	name string
+	size int64
 	strong string
 	parent *Dir
 	blocks []*Block
@@ -201,6 +208,8 @@ type File struct {
 func (file *File) Name() (string) { return file.name }
 
 func (file *File) IsRoot() (bool) { return false }
+
+func (file *File) Size() int64 { return file.size }
 
 func (file *File) Strong() (string) { return file.strong }
 
