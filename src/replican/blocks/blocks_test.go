@@ -53,3 +53,64 @@ func TestDirIndex(t *testing.T) {
 	}
 }
 
+func TestVisitDirsOnly(t *testing.T) {
+	dir, _ := IndexDir("testroot/")
+	collect := []*Dir{}
+	visited := []Node{}
+	
+	Traverse(dir, func(node Node) bool {
+		visited = append(visited, node)
+		
+		d, ok := node.(*Dir)
+		if ok {
+			collect = append(collect, d)
+			return true
+		}
+		
+		_, ok = node.(*File)
+		if ok {
+			return false
+		}
+		
+		t.Errorf("Unexpected type during visit: %v", node)
+		return true
+	})
+	
+	if len(collect) != 3 {
+		t.Errorf("Unexpected dirs in testroot/: %v", collect)
+	}
+	
+	for _, node := range visited {
+		_, ok := node.(*Block)
+		if ok {
+			t.Fatalf("Should not have gotten a block, we told visitor to stop at file level.")
+		}
+	}
+}
+
+func TestVisitBlocks(t *testing.T) {
+	dir, _ := IndexDir("testroot/")
+	collect := []*Block{}
+	
+	Traverse(dir, func(node Node) bool {
+		b, ok := node.(*Block)
+		if ok {
+			collect = append(collect, b)
+		}
+		
+		return true
+	})
+	
+	matched := false
+	for _, block := range collect {
+		if block.Strong() == "d1f11a93449fa4d3f320234743204ce157bbf1f3" {
+			matched = true
+		}
+	}
+	if !matched {
+		t.Errorf("Failed to find expected block")
+	}
+}
+
+
+

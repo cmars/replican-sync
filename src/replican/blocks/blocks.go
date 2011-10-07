@@ -34,17 +34,17 @@ func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
     weak.b -= uint(removedByte) * BLOCKSIZE - weak.a;
 }
 
-type IndexVisitor struct {
+type indexVisitor struct {
 	root *Dir
 	currentDir *Dir
 	dirMap map[string]*Dir
 }
 
-func newVisitor(path string) *IndexVisitor {
+func newVisitor(path string) *indexVisitor {
 	path = filepath.Clean(path)
 	path = strings.TrimRight(path, "/\\")
 	
-	visitor := new(IndexVisitor)
+	visitor := new(indexVisitor)
 	visitor.dirMap = make(map[string]*Dir)
 	visitor.root = new(Dir)
 	visitor.currentDir = visitor.root
@@ -53,7 +53,7 @@ func newVisitor(path string) *IndexVisitor {
 	return visitor
 }
 
-func (visitor *IndexVisitor) VisitDir(path string, f *os.FileInfo) bool {
+func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 	path = filepath.Clean(path)
 	
 	dir, hasDir := visitor.dirMap[path]
@@ -76,7 +76,7 @@ func (visitor *IndexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 	return true
 }
 
-func (visitor *IndexVisitor) VisitFile(path string, f *os.FileInfo) {
+func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 	file, err := IndexFile(path)
 	if file != nil {
 		file.parent = visitor.currentDir
@@ -256,5 +256,21 @@ func (dir *Dir) String() string	{
 
 func (dir *Dir) ChildCount() (int) { return len(dir.subdirs) + len(dir.files) }
 
+type NodeVisitor func(Node) bool
+
+func Traverse(node Node, visitor NodeVisitor) {
+	nodestack := []Node{}
+	nodestack = append(nodestack, node)
+	
+	for ; len(nodestack) > 0 ; {
+		current := nodestack[0]
+		nodestack = nodestack[1:]
+		if visitor(current) {
+			for i := 0; i < current.ChildCount(); i++ {
+				nodestack = append(nodestack, current.Child(i))
+			}
+		}
+	}
+}
 
 
