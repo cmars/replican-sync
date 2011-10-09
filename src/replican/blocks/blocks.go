@@ -110,6 +110,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 	if f == nil {
 		return nil, err
 	}
+	defer f.Close()
 	
 	file = new(File)
 	_, basename := filepath.Split(path)

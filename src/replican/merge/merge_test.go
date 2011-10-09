@@ -5,6 +5,7 @@ import (
 	"os"
 	"replican/blocks"
 	"testing"
+	"github.com/bmizerany/assert"
 )
 
 func TestMatchIdentity(t *testing.T) {
@@ -13,16 +14,13 @@ func TestMatchIdentity(t *testing.T) {
 	
 	match, err := Match(srcPath, dstPath)
 	
-	if err != nil {
-		t.Fatalf("Error matching files: %s", err.String())
-	}
+	assert.T(t, err == nil)
 	
 	nMatches := 0
 	for i, match := range match.BlockMatches {
-		if match.DstOffset % int64(blocks.BLOCKSIZE) != 0 {
-			t.Errorf("Destination match block# %d not aligned with blocksize! (offset=%d)",
+		assert.Equalf(t, int64(0), match.DstOffset % int64(blocks.BLOCKSIZE), 
+				"Destination match block# %d not aligned with blocksize! (offset=%d)",
 				i, match.DstOffset)
-		}
 		nMatches++
 	}
 	
@@ -35,15 +33,13 @@ func TestMatchIdentity(t *testing.T) {
 			nExpectMatches++
 		}
 		
-		if nExpectMatches != int64(nMatches) {
-			t.Errorf("Expected %d matches, got %d", nExpectMatches, nMatches)
-		}
+		assert.Equalf(t, nExpectMatches, int64(nMatches),
+				"Expected %d matches, got %d", nExpectMatches, nMatches)
 	}
 	
 	lastBlockSize := fileInfo.Size - int64(match.BlockMatches[14].DstOffset)
-	if lastBlockSize != 5419 {
-		t.Errorf("Unxpected last block size: %d", lastBlockSize)
-	}
+	assert.Equalf(t, int64(5419), lastBlockSize,
+			"Unxpected last block size: %d", lastBlockSize)
 }
 
 func TestMatchMunge(t *testing.T) {
@@ -52,25 +48,61 @@ func TestMatchMunge(t *testing.T) {
 	
 	match, err := Match(srcPath, dstPath)
 	
-	if err != nil {
-		t.Fatalf("Error matching files: %s", err.String())
-	}
+	assert.T(t, err == nil)
 	
 	nMatches := 0
 	for i, match := range match.BlockMatches {
-		if match.DstOffset % int64(blocks.BLOCKSIZE) != 0 {
-			t.Errorf("Destination match block# %d not aligned with blocksize! (offset=%d)",
+		assert.Equalf(t, int64(0), match.DstOffset % int64(blocks.BLOCKSIZE),
+				"Destination match block# %d not aligned with blocksize! (offset=%d)",
 				i, match.DstOffset)
-		}
 		nMatches++
 	}
 	
 	const nExpectedMatches = 13
-	if nMatches != nExpectedMatches {
-		t.Errorf("Expected %d matches, got %d", nExpectedMatches, nMatches)
-	}
+	assert.Equalf(t, nExpectedMatches, nMatches, 
+			"Expected %d matches, got %d", nExpectedMatches, nMatches)
 }
 
+func TestHoles(t *testing.T) {
+	testMatch := &FileMatch{ 
+		SrcSize:99099, DstSize:99099, 
+		BlockMatches: []*BlockMatch{
+			&BlockMatch{DstOffset:123},
+			&BlockMatch{DstOffset:9991},
+			&BlockMatch{DstOffset:23023},
+		}}
+	
+	notMatched := testMatch.NotMatched()
+	
+	assert.Tf(t, len(notMatched) > 0, "Failed to detect obvious holes in match")
+	
+	for i, unmatch := range(notMatched) {
+		switch i {
+		case 0:
+			assert.Equal(t, int64(0), unmatch.From)
+			assert.Equal(t, int64(122), unmatch.To)
+			break
+			
+		case 1:
+			assert.Equal(t, int64(8315), unmatch.From)
+			assert.Equal(t, int64(9990), unmatch.To)
+			break
+			
+		case 2:
+			assert.Equal(t, int64(18183), unmatch.From)
+			assert.Equal(t, int64(23022), unmatch.To)
+			break
+			
+		case 3:
+			assert.Equal(t, int64(31215), unmatch.From)
+			assert.Equal(t, int64(99098), unmatch.To)
+			break
+		
+		default:
+			t.Fatalf("Unexpected not-match %v", unmatch)
+		}
+	}
+}
 
 
 

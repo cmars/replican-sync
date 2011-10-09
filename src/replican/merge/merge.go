@@ -2,6 +2,7 @@
 package merge
 
 import (
+	"io/ioutil"
 	"os"
 	"replican/blocks"
 )
@@ -23,6 +24,11 @@ type FileMatch struct {
 	SrcSize int64
 	DstSize int64
 	BlockMatches []*BlockMatch
+}
+
+type RangePair struct {
+	From int64
+	To int64
 }
 
 func Match(src string, dst string) (match *FileMatch, err os.Error) {
@@ -51,11 +57,11 @@ func MatchIndex(srcBlockIndex *blocks.BlockIndex, dst string) (match *FileMatch,
 	match = new(FileMatch)
 	var dstOffset int64
 	
-	var dstF *os.File
-	dstF, err = os.Open(dst)
+	dstF, err := os.Open(dst)
 	if dstF == nil {
 		return nil, err
 	}
+	defer dstF.Close()
 	
 	if dstInfo, err := dstF.Stat(); dstInfo != nil {
 		match.DstSize = dstInfo.Size
@@ -94,7 +100,8 @@ SCAN:
 					
 					// Double-check with the strong checksum
 					if blocks.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
-						// map this match
+					
+						// We've got a block match in dest
 						match.BlockMatches = append(match.BlockMatches, &BlockMatch{
 							SrcBlock:matchBlock, 
 							DstOffset: dstOffset - int64(blocksize) })
@@ -126,6 +133,82 @@ SCAN:
 	}
 	
 	return match, nil
+}
+
+func (match *FileMatch) NotMatched() (ranges []*RangePair) {
+	start := int64(0)
+	
+	for _, blockMatch := range match.BlockMatches {
+		if start < blockMatch.DstOffset {
+			ranges = append(ranges, &RangePair{From:start, To:blockMatch.DstOffset-1})
+		}
+		start = blockMatch.DstOffset + int64(blocks.BLOCKSIZE)
+	}
+	
+	if start < match.DstSize {
+		ranges = append(ranges, &RangePair{From:start, To:match.DstSize-1})
+	}
+	
+	return ranges
+}
+
+func Patch(src string, dst string) os.Error {
+	match, err := Match(src, dst)
+	if match == nil {
+		return err
+	}
+	
+	var buf [blocks.BLOCKSIZE]byte
+	
+	newdstF, err := ioutil.TempFile("", dst)
+	if newdstF == nil { return err }
+	defer newdstF.Close()
+	
+	dstF, err := os.Open(dst)
+	if dstF == nil { return err }
+	defer dstF.Close()
+	
+	// Write blocks from dst that we already have
+DST_2_NEWDST:
+	for _, blockMatch := range match.BlockMatches {
+		dstF.Seek(blockMatch.DstOffset, 0)
+		newdstF.Seek(blockMatch.DstOffset, 0)
+		
+		switch rd, err := dstF.Read(buf[:]); true {
+		case rd < 0:
+			return err
+		
+		case rd == 0:
+			break DST_2_NEWDST
+		
+		case rd > 0:
+			newdstF.Write(buf[:rd])
+		}
+	}
+	
+	srcF, err := os.Open(src)
+	if srcF == nil { return err }
+	defer srcF.Close()
+	
+	// Fill in the rest from src
+SRC_2_NEWDST:
+	for _, notMatch := range match.NotMatched() {
+		srcF.Seek(notMatch.From, 0)
+		newdstF.Seek(notMatch.From, 0)
+		
+		switch rd, err := srcF.Read(buf[:]); true {
+		case rd < 0:
+			return err
+		
+		case rd == 0:
+			break SRC_2_NEWDST
+		
+		case rd > 0:
+			newdstF.Write(buf[:rd])
+		}
+	}
+	
+	return nil
 }
 
 
