@@ -124,7 +124,7 @@ func TestPatch(t *testing.T) {
 		io.Copy(dstF, origDstF)
 	}()
 	
-	err := Patch(srcPath, dstPath)
+	err := PatchFile(srcPath, dstPath)
 	if err != nil { fmt.Print(err.String()) }
 	assert.T(t, err == nil)
 	

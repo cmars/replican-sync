@@ -2,6 +2,7 @@
 package merge
 
 import (
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -224,44 +225,44 @@ SRC_2_NEWDST:
 
 type PatchCmd interface {
 	
-	Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) os.Error
+	Exec(srcStore blocks.BlockStore) os.Error
 	
 }
 
-// Rename a file. Paths are relative.
+// Rename a file.
 type Rename struct {
 	From string
 	To string
 }
 
-func (rename *Rename) Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) os.Error {
-	return os.Rename(dstStore.LocalPath(rename.From), dstStore.LocalPath(rename.To))
+func (rename *Rename) Exec(srcStore blocks.BlockStore) os.Error {
+	return os.Rename(rename.From, rename.To)
 }
 
 // Keep a file. Yeah, that's right. Just leave it alone.
 type Keep struct {
-	Path string
+	LocalPath string
 }
 
-func (keep *Keep) Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) os.Error { }
+func (keep *Keep) Exec(srcStore blocks.BlockStore) os.Error { return nil }
 
-// Delete a file. Paths are relative.
+// Delete a file.
 type Delete struct {
-	Path string
+	LocalPath string
 }
 
-func (delete *Delete) Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) os.Error {
-	return os.RemoveAll(dstStore.LocalPath(delete.Path))
+func (delete *Delete) Exec(srcStore blocks.BlockStore) os.Error {
+	return os.RemoveAll(delete.LocalPath)
 }
 
 // Set a file to a different size. Paths are relative.
 type Resize struct {
-	Path string
+	LocalPath string
 	Size int64
 }
 
-func (resize *Resize) Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) os.Error {
-	return os.Truncate(dstStore.LocalPath(resize.Path), resize.Size)
+func (resize *Resize) Exec(srcStore blocks.BlockStore) os.Error {
+	return os.Truncate(resize.LocalPath, resize.Size)
 }
 
 // Start a temp file to recieve changes on a local destination file.
@@ -269,7 +270,24 @@ func (resize *Resize) Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalSto
 type LocalTemp struct {
 	LocalPath string
 	Size int64
-	TmpPath string
+	
+	localFh *os.File
+	tempFh *os.File
+}
+
+func (localTemp *LocalTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
+	localTemp.localFh, err = os.Open(localTemp.LocalPath)
+	if localTemp.localFh == nil { return err }
+	
+	localDir, localName := filepath.Split(localTemp.LocalPath)
+	
+	localTemp.tempFh, err = ioutil.TempFile(localDir, localName)
+	if localTemp.tempFh == nil { return err }
+	
+	err = localTemp.tempFh.Truncate(localTemp.Size)
+	if (err != nil) { return err }
+	
+	return nil
 }
 
 // Replace the local file with its temporary
@@ -277,37 +295,68 @@ type ReplaceWithTemp struct {
 	Temp *LocalTemp
 }
 
-// Copy a range of data known to already be in the local destination file.
-type LocalTmpCopy struct {
-	Temp LocalTemp
-	LocalFrom int64
-	LocalTo int64
-	TmpFrom int64
-	TmpTo int64
+func (rwt *ReplaceWithTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
+	tmpName := rwt.Temp.tempFh.Name()
+	rwt.Temp.localFh.Close()
+	rwt.Temp.localFh = nil
+	
+	rwt.Temp.tempFh.Close()
+	rwt.Temp.tempFh = nil
+	
+	err = os.Remove(rwt.Temp.LocalPath)
+	if err != nil { return err }
+	
+	err = os.Rename(tmpName, rwt.Temp.LocalPath)
+	if err != nil { return err }
+	
+	return nil
 }
 
-//func (drc *DstRangeCopy) Exec(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) os.Error {
-//	dst := dstStore.LocalPath(drc.Path)
-//	
-//}
+// Copy a range of data known to already be in the local destination file.
+type LocalTmpCopy struct {
+	Temp *LocalTemp
+	LocalOffset int64
+	TempOffset int64
+	Length int64
+}
+
+func (ltc *LocalTmpCopy) Exec(srcStore blocks.BlockStore) (err os.Error) {
+	_, err = ltc.Temp.localFh.Seek(ltc.LocalOffset, 0)
+	if err != nil { return err }
+	
+	_, err = ltc.Temp.tempFh.Seek(ltc.TempOffset, 0)
+	if err != nil { return err }
+	
+	_, err = io.Copyn(ltc.Temp.tempFh, ltc.Temp.localFh, ltc.Length)
+	return err
+}
 
 // Copy a range of data from the source file into a local temp file.
 type SrcTmpCopy struct {
-	Temp LocalTemp
-	SrcPath string
-	SrcFrom int64
-	SrcTo int64
-	TmpFrom int64
-	TmpTo int64
+	Temp *LocalTemp
+	SrcStrong string
+	SrcOffset int64
+	TempOffset int64
+	Length int64
+}
+
+func (stc *SrcTmpCopy) Exec(srcStore blocks.BlockStore) os.Error {
+	stc.Temp.tempFh.Seek(stc.TempOffset, 0)
+	return srcStore.ReadInto(stc.SrcStrong, stc.SrcOffset, stc.Length, stc.Temp.tempFh)
 }
 
 // Copy a range of data from the source file to the destination file.
-type SrcTmpCopy struct {
-	Path string
-	SrcFrom int64
-	SrcTo int64
-	DstFrom int64
-	DstTo int64
+type SrcFileDownload struct {
+	SrcFile *blocks.File
+	LocalPath string
+	Length int64
+}
+
+func (sfd *SrcFileDownload) Exec(srcStore blocks.BlockStore) os.Error {
+	dstFh, err := os.Create(sfd.LocalPath)
+	if dstFh == nil { return err }
+	
+	return srcStore.ReadInto(sfd.SrcFile.Strong(), 0, sfd.SrcFile.Size(), dstFh)
 }
 
 type PatchPlan struct {
@@ -337,42 +386,41 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 		srcPath := blocks.RelPath(srcFsNode)
 		
 		// Try to match at the file level. Might be a Rename or leave in place
-		if dstNode, has := dstStore.Index().StrongMap[srcNode.Strong()] {
-			dstFsNode, isFsNode := dstNode.(blocks.FsNode)
-			dstPath := blocks.RelPath(dstFsNode)
+		if dstNode, has := dstStore.Index().StrongMap[srcNode.Strong()]; has {
 			
-			if srcPath != dstPath {
-				plan.Cmds = append(plan.Cmds, &Rename{ From:dstPath, To:srcPath })
-			} else {
-				plan.Cmds = append(plan.Cmds, &Keep{ Path:srcPath })
+			if dstFsNode, isFsNode := dstNode.(blocks.FsNode); isFsNode {
+				dstPath := blocks.RelPath(dstFsNode)
+			
+				if srcPath != dstPath {
+					plan.Cmds = append(plan.Cmds, &Rename{ From:dstPath, To:srcPath })
+				} else {
+					plan.Cmds = append(plan.Cmds, &Keep{ LocalPath:srcPath })
+				}
 			}
-			
+						
 			return false
 			
 		// If its a file, figure out what to do with it
 		} else if (isFile) {
 			dstFilePath := dstStore.LocalPath(blocks.RelPath(srcFile))
 			
-			switch dstFileInfo, err := os.Stat(dstFilePath); true {
+			switch dstFileInfo, _ := os.Stat(dstFilePath); true {
 			
 			// Destination is not a file, so get rid of whatever is there first
 			case dstFileInfo != nil && !dstFileInfo.IsRegular():
-				plan.Cmds = append(plan.Cmds, &Delete{ Path: srcPath })
+				plan.Cmds = append(plan.Cmds, &Delete{ LocalPath: srcPath })
 				fallthrough
 			
 			// Destination file does not exist, so full source copy needed
 			case dstFileInfo == nil:
-				plan.Cmds = append(plan.Cmds, &SrcDstCopy{
-					Path: srcPath, 
-					SrcFrom: int64(0),
-					SrcTo: srcFile.Size(),
-					DstFrom: int64(0),
-					DstTo: srcFile.Size()})
+				plan.Cmds = append(plan.Cmds, &SrcFileDownload{
+					SrcFile: srcFile,
+					LocalPath: dstFilePath})
 				break
 			
 			// Destination file exists, add block-level commands
 			default:
-				plan.appendFilePlan(srcPath, dstFilePath)
+				plan.appendFilePlan(srcFile, dstFilePath)
 				break
 			
 			}
@@ -384,7 +432,7 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 	return plan 
 }
 
-func (plan *PatchPlan) appendFilePlan(srcPath string, dst string) os.Error {
+func (plan *PatchPlan) appendFilePlan(srcFile *blocks.File, dst string) os.Error {
 	match, err := MatchIndex(plan.srcStore.Index(), dst)
 	if match == nil {
 		return err
@@ -392,25 +440,23 @@ func (plan *PatchPlan) appendFilePlan(srcPath string, dst string) os.Error {
 	
 	// Create a local temporary file in which to effect changes
 	localTemp := &LocalTemp{ LocalPath: dst, Size: match.SrcSize }
-	plan.Cmds = append(plan.Cmds, tmp)
+	plan.Cmds = append(plan.Cmds, localTemp)
 	
 	for _, blockMatch := range match.BlockMatches {
 		plan.Cmds = append(plan.Cmds, &LocalTmpCopy{
 			Temp: localTemp,
-			LocalFrom: blockMatch.SrcBlock.Offset(),
-			LocalTo: blockMatch.SrcBlock.Offset() + int64(blocks.BLOCKSIZE),
-			TmpFrom: blockMatch.DstOffset,
-			TmpTo: blockMatch.DstOffset + int64(blocks.BLOCKSIZE)})
+			LocalOffset: blockMatch.SrcBlock.Offset(),
+			TempOffset: blockMatch.DstOffset,
+			Length: int64(blocks.BLOCKSIZE)})
 	}
 	
 	for _, srcRange := range match.NotMatched() {
 		plan.Cmds = append(plan.Cmds, &SrcTmpCopy{
 			Temp: localTemp,
-			SrcPath: srcPath,
-			SrcFrom: srcRange.From,
-			SrcTo: srcRange.To,
-			TmpFrom: srcRange.From,
-			TmpTo: srcRange.To})
+			SrcStrong: srcFile.Strong(),
+			SrcOffset: srcRange.From,
+			TempOffset: srcRange.From,
+			Length: srcRange.To - srcRange.From})
 	}
 	
 	// Replace dst file with temp

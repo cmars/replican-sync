@@ -396,7 +396,7 @@ type BlockStore interface {
 	ReadBlock(strong string) ([]byte, os.Error)
 	
 	// Given the strong checksum of a file, start and end positions, get those bytes.
-	ReadFile(strong string, from int64, to int64) ([]byte, os.Error)
+	ReadInto(strong string, from int64, length int64, writer io.Writer) os.Error
 	
 }
 
@@ -437,38 +437,39 @@ func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
 	block, is := maybeBlock.(*Block)
 	if !is { return nil, os.NewError(fmt.Sprintf("%s: not a block", strong)) }
 	
-	from := block.Offset()
-	to := from + int64(BLOCKSIZE)
-	return store.ReadFile(block.Parent().Strong(), from, to)
-}
-
-func (store *LocalStore) ReadFile(strong string, from int64, to int64) ([]byte, os.Error) {
 	buf := &bytes.Buffer{}
-	
-	node, has := store.index.StrongMap[strong]
-	if !has {
-		return nil, os.NewError(
-				fmt.Sprintf("File with strong checksum %s not found", strong))
-	}
-	
-	file, is := node.(*File)
-	if !is { return nil, os.NewError(fmt.Sprintf("%s: not a file", strong)) }
-	
-	path := store.LocalPath(RelPath(file))
-	
-	fh, err := os.Open(path)
-	if fh == nil { return nil, err }
-	
-	_, err = fh.Seek(from, 0)
-	if err != nil { return nil, err }
-	
-	toRd := to - from
-	_, err = io.Copyn(buf, fh, toRd)
-	if err != nil {
+	err := store.ReadInto(block.Parent().Strong(), block.Offset(), int64(BLOCKSIZE), buf)
+	if err == nil {
 		return nil, err
 	}
 	
 	return buf.Bytes(), nil
+}
+
+func (store *LocalStore) ReadInto(strong string, from int64, length int64, writer io.Writer) os.Error {
+	
+	node, has := store.index.StrongMap[strong]
+	if !has {
+		return os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
+	}
+	
+	file, is := node.(*File)
+	if !is { return os.NewError(fmt.Sprintf("%s: not a file", strong)) }
+	
+	path := store.LocalPath(RelPath(file))
+	
+	fh, err := os.Open(path)
+	if fh == nil { return err }
+	
+	_, err = fh.Seek(from, 0)
+	if err != nil { return err }
+	
+	_, err = io.Copyn(writer, fh, length)
+	if err != nil {
+		return err
+	}
+	
+	return nil
 }
 
 
