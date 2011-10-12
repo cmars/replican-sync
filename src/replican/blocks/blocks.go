@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"container/vector"
 )
 
 const BLOCKSIZE int = 8192
@@ -83,7 +84,7 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 		dir.parent = visitor.dirMap[dirname]
 		
 		if dir.parent != nil {
-			dir.parent.subdirs = append(dir.parent.subdirs, dir)
+			dir.parent.SubDirs = append(dir.parent.SubDirs, dir)
 		}
 	}
 		
@@ -96,7 +97,7 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 	file, err := IndexFile(path)
 	if file != nil {
 		file.parent = visitor.currentDir
-		visitor.currentDir.files = append(visitor.currentDir.files, file)
+		visitor.currentDir.Files = append(visitor.currentDir.Files, file)
 	} else {
 		fmt.Errorf("failed to read file %s: %s", path, err.String())
 	}
@@ -129,7 +130,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 	file.name = basename
 	
 	if fileInfo, err := f.Stat(); fileInfo != nil {
-		file.size = fileInfo.Size
+		file.Size = fileInfo.Size
 	} else {
 		return nil, err
 	}
@@ -149,7 +150,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 			// Update block hashes
 			block = IndexBlock(buf[0:rd])
 			block.position = blockNum
-			file.blocks = append(file.blocks, block)
+			file.Blocks = append(file.Blocks, block)
 			
 			// update file hash
 			sha1.Write(buf[0:rd])
@@ -198,13 +199,7 @@ type Node interface {
 	Strong() string
 	
 	// Get the node that contains this node in the hierarchical index.
-	Parent() Node
-	
-	// Get the nth child node contained by this node.
-	Child(i int) Node
-	
-	// Get the number of child nodes contained by this node.
-	ChildCount() int
+	Parent() FsNode
 	
 }
 
@@ -219,19 +214,13 @@ type FsNode interface {
 	
 }
 
-func RelPath(node FsNode) string {
-	parts := []string{}
-	fsNode, isFsNode := node.(FsNode)
-	for ; fsNode != nil && isFsNode ; {
-		
-		if len(parts) > 0 {
-			parts = append([]string{fsNode.Name()}, parts[1:]...)
-		} else {
-			parts = append(parts, fsNode.Name())
-		}
-		
-		fsNode, isFsNode = fsNode.Parent().(FsNode)
+func RelPath(item FsNode) string {
+	parts := vector.StringVector{}
+	
+	for fsNode := item; !fsNode.IsRoot(); fsNode = fsNode.Parent() {
+		parts.Insert(0, fsNode.Name())
 	}
+	
 	return filepath.Join(parts...)
 }
 
@@ -255,7 +244,7 @@ func (block *Block) IsRoot() (bool) { return false }
 
 func (block *Block) Strong() (string) { return block.strong }
 
-func (block *Block) Parent() (Node) { return block.parent }
+func (block *Block) Parent() (FsNode) { return block.parent }
 
 func (block *Block) Child(i int) (Node) { return nil }
 
@@ -264,33 +253,29 @@ func (block *Block) ChildCount() (int) { return 0 }
 // Represent a file in a hierarchical index.
 type File struct {
 	name string
-	size int64
 	strong string
 	parent *Dir
-	blocks []*Block
+	
+	Size int64
+	Blocks []*Block
 }
 
 func (file *File) Name() (string) { return file.name }
 
 func (file *File) IsRoot() (bool) { return false }
 
-func (file *File) Size() int64 { return file.size }
-
 func (file *File) Strong() (string) { return file.strong }
 
-func (file *File) Parent() (Node) { return file.parent }
-
-func (file *File) Child(i int) (Node) { return file.blocks[i] }
-
-func (file *File) ChildCount() (int) { return len(file.blocks) }
+func (file *File) Parent() (FsNode) { return file.parent }
 
 // Represent a directory in a hierarchical index.
 type Dir struct {
 	name string
 	strong string
 	parent *Dir
-	subdirs []*Dir
-	files []*File
+	
+	SubDirs []*Dir
+	Files []*File
 }
 
 func (dir *Dir) Name() (string) { return dir.name }
@@ -310,25 +295,15 @@ func (dir *Dir) calcStrong() string {
 	return toHexString(sha1)
 }
 
-func (dir *Dir) Parent() (Node) { return dir.parent }
-
-func (dir *Dir) Child(i int) (Node) {
-	switch sl := len(dir.subdirs); true {
-	case i < sl:
-		return dir.subdirs[i]
-	default:
-		return dir.files[i-sl]
-	}
-	return nil
-}
+func (dir *Dir) Parent() (FsNode) { return dir.parent }
 
 func (dir *Dir) stringBytes() []byte {
 	buf := bytes.NewBufferString("")
 	
-	for _, subdir := range dir.subdirs {
+	for _, subdir := range dir.SubDirs {
 		fmt.Fprintf(buf, "%s\td\t%s\n", subdir.Strong(), subdir.Name())
 	}
-	for _, file := range dir.files {
+	for _, file := range dir.Files {
 		fmt.Fprintf(buf, "%s\tf\t%s\n", file.Strong(), file.Name())
 	}
 	
@@ -339,8 +314,6 @@ func (dir *Dir) stringBytes() []byte {
 func (dir *Dir) String() string	{
 	return string(dir.stringBytes())
 }
-
-func (dir *Dir) ChildCount() (int) { return len(dir.subdirs) + len(dir.files) }
 
 // Visitor function that is used to traverse a hierarchical Node index.
 type NodeVisitor func(Node) bool
@@ -354,9 +327,20 @@ func Walk(node Node, visitor NodeVisitor) {
 		current := nodestack[0]
 		nodestack = nodestack[1:]
 		if visitor(current) {
-			for i := 0; i < current.ChildCount(); i++ {
-				nodestack = append(nodestack, current.Child(i))
+			
+			if dir, isDir := current.(*Dir); isDir {
+				for _, subdir := range dir.SubDirs {
+					nodestack = append(nodestack, subdir)
+				}
+				for _, file := range dir.Files {
+					nodestack = append(nodestack, file)
+				}
+			} else if file, isFile := current.(*File); isFile {
+				for _, block := range file.Blocks {
+					nodestack = append(nodestack, block)
+				}
 			}
+			
 		}
 	}
 }

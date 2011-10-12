@@ -31,9 +31,13 @@ package treegen
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"rand"
+	"testing"
+	
+	"github.com/bmizerany/assert"
 )
 
 type Generated interface {}
@@ -88,6 +92,18 @@ func (treeGen *TreeGen) F(name string, contents ...Generated) *File {
 
 func (treeGen *TreeGen) B(seed int64, length int64) *Bytes {
 	return &Bytes{Seed: seed, Length: length}
+}
+
+const PREFIX string = "treegen"
+
+func TestTree(t *testing.T, g Generated) string {
+	tempdir, err := ioutil.TempDir("", PREFIX)
+	assert.Tf(t, err == nil, "Fail to create temp dir")
+	
+	err = Fab(tempdir, g)
+	assert.Tf(t, err == nil, "Fail to fab tree")
+	
+	return tempdir
 }
 
 func Fab(parent string, g Generated) (os.Error) {

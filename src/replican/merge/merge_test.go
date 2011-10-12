@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"replican/blocks"
+	"replican/treegen"
 	"testing"
+	
 	"github.com/bmizerany/assert"
 )
 
@@ -137,5 +139,20 @@ func TestPatch(t *testing.T) {
 	assert.Equal(t, srcFile.Strong(), dstFile.Strong())
 }
 
-
+func TestPatchPlan(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	fmt.Print(patchPlan.Cmds[0])
+	assert.Equal(t, 0, len(patchPlan.Cmds))
+}
 
