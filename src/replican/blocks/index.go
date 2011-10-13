@@ -114,6 +114,12 @@ func IndexFile(path string) (file *File, err os.Error) {
 	var f *os.File
 	var buf [BLOCKSIZE]byte
 	
+	if stat, err := os.Stat(path); stat == nil {
+		return nil, err
+	} else if !stat.IsRegular() {
+		return nil, os.NewError(fmt.Sprintf("%s: not a regular file", path))
+	}
+	
 	f, err = os.Open(path)
 	if f == nil {
 		return nil, err

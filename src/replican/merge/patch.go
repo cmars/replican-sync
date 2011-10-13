@@ -154,7 +154,7 @@ type LocalTemp struct {
 }
 
 func (localTemp *LocalTemp) String() string {
-	return fmt.Sprintf("Create a temporary backup of %s", localTemp.Path)
+	return fmt.Sprintf("Create a temporary file for %s, size=%d bytes", localTemp.Path, localTemp.Size)
 }
 
 func (localTemp *LocalTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
@@ -335,11 +335,22 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 	return plan 
 }
 
+func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
+	for _, cmd := range plan.Cmds {
+		err = cmd.Exec(plan.srcStore)
+		if err != nil {
+			return cmd, err
+		}
+	}
+	return nil, nil
+}
+
 func (plan *PatchPlan) appendFilePlan(srcFile *blocks.File, dst string) os.Error {
 	match, err := MatchIndex(plan.srcStore.Index(), dst)
 	if match == nil {
 		return err
 	}
+	match.SrcSize = srcFile.Size
 	
 	// Create a local temporary file in which to effect changes
 	localTemp := &LocalTemp{ Path: dst, Size: match.SrcSize }

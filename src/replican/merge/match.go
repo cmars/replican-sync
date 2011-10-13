@@ -2,6 +2,7 @@
 package merge
 
 import (
+	"fmt"
 	"os"
 	"replican/blocks"
 )
@@ -58,10 +59,12 @@ func MatchIndex(srcBlockIndex *blocks.BlockIndex, dst string) (match *FileMatch,
 	}
 	defer dstF.Close()
 	
-	if dstInfo, err := dstF.Stat(); dstInfo != nil {
-		match.DstSize = dstInfo.Size
-	} else {
+	if dstInfo, err := dstF.Stat(); dstInfo == nil {
 		return nil, err
+	} else if (!dstInfo.IsRegular()) {
+		return nil, os.NewError(fmt.Sprintf("%s: not a regular file", dst))
+	} else {
+		match.DstSize = dstInfo.Size
 	}
 	
 	dstWeak := new(blocks.WeakChecksum)
@@ -140,8 +143,8 @@ func (match *FileMatch) NotMatched() (ranges []*RangePair) {
 		start = blockMatch.DstOffset + int64(blocks.BLOCKSIZE)
 	}
 	
-	if start < match.DstSize {
-		ranges = append(ranges, &RangePair{From:start, To:match.DstSize})
+	if start < match.SrcSize {
+		ranges = append(ranges, &RangePair{From:start, To:match.SrcSize})
 	}
 	
 	return ranges

@@ -3,8 +3,9 @@ package merge
 
 import (
 	"fmt"
-	"io"
+	_ "io"
 	"os"
+	"path/filepath"
 	"replican/blocks"
 	"replican/treegen"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/bmizerany/assert"
 )
 
+/*
 func TestMatchIdentity(t *testing.T) {
 	srcPath := "./testroot/My Music/0 10k 30.mp4"
 	dstPath := srcPath
@@ -144,38 +146,106 @@ func TestPatchIdentity(t *testing.T) {
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
 	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
 	srcStore, err := blocks.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
 	
 	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
 	dstStore, err := blocks.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
+//	printPlan(patchPlan)
 	
-	printPlan(patchPlan)
+	assert.Equal(t, 1, len(patchPlan.Cmds))
+	keep := patchPlan.Cmds[0].(*Keep)
+	assert.Equal(t, dstpath, keep.Path)
+}
+*/
+
+func TestMatchAppend(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.F("bar", tg.B(42, 65537), tg.B(43, 65537))
 	
-	assert.Equal(t, 0, len(patchPlan.Cmds))
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	
+	// Try indexing root dir as a file
+	srcFile, err := blocks.IndexFile(srcpath)
+	assert.Tf(t, err != nil, "%v", err)
+	
+	// Ok, for real this time
+	srcFile, err = blocks.IndexFile(filepath.Join(srcpath, "bar"))
+	assert.Tf(t, err == nil, "%v", err)
+	assert.Equal(t, 17, len(srcFile.Blocks))
+	
+	tg = treegen.New()
+	treeSpec = tg.F("bar", tg.B(42, 65537))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstFile, err := blocks.IndexFile(filepath.Join(dstpath, "bar"))
+	assert.Equal(t, 9, len(dstFile.Blocks))
+	
+	match, err := MatchFile(srcFile, filepath.Join(dstpath, "bar"))
+	assert.T(t, err == nil, "%v", err)
+	
+	assert.Equal(t, 8, len(match.BlockMatches))
+	
+	notMatched := match.NotMatched()
+	assert.Equal(t, 1, len(notMatched))
+	assert.Equal(t, int64(65536), notMatched[0].From)
+	assert.Equal(t, int64(65537+65537), notMatched[0].To)
 }
 
 func TestPatchFileAppend(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
 	
 	srcpath := treegen.TestTree(t, treeSpec)
 	srcStore, err := blocks.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
 	
 	tg = treegen.New()
-	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
+	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
 	dstpath := treegen.TestTree(t, treeSpec)
 	dstStore, err := blocks.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	printPlan(patchPlan)
-	assert.Equal(t, 0, len(patchPlan.Cmds))
+//	printPlan(patchPlan)
+	
+	complete := false
+	for i, cmd := range patchPlan.Cmds {
+		switch {
+		case i == 0:
+			localTemp, isTemp := cmd.(*LocalTemp)
+			assert.T(t, isTemp)
+			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path)
+		case i >= 1 && i <=8:
+			ltc, isLtc := cmd.(*LocalTempCopy)
+			assert.Tf(t, isLtc, "cmd %d", i)
+			assert.Equal(t, ltc.LocalOffset, ltc.TempOffset)
+			assert.Equal(t, int64(blocks.BLOCKSIZE), ltc.Length)
+			assert.Equal(t, int64(0), ltc.LocalOffset % int64(blocks.BLOCKSIZE))
+		case i == 9:
+			stc, isStc := cmd.(*SrcTempCopy)
+			assert.T(t, isStc)
+			assert.Equal(t, int64(65538), stc.Length)
+		case i == 10:
+			_, isRwt := cmd.(*ReplaceWithTemp)
+			assert.T(t, isRwt)
+			complete = true
+		case i > 10:
+			t.Fatalf("too many commands")
+		}
+	}
+	assert.T(t, complete, "missing expected number of commands")
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 }
 
 func printPlan(plan *PatchPlan) {
