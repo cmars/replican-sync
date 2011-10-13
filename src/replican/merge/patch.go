@@ -2,153 +2,13 @@
 package merge
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"replican/blocks"
 )
-
-type BlockMatch struct {
-	SrcBlock *blocks.Block
-	DstOffset int64
-}
-
-type FileMatch struct {
-	SrcSize int64
-	DstSize int64
-	BlockMatches []*BlockMatch
-}
-
-type RangePair struct {
-	From int64
-	To int64
-}
-
-func (r *RangePair) Size() int64 {
-	return r.To - r.From
-}
-
-func Match(src string, dst string) (match *FileMatch, err os.Error) {
-	var srcFile *blocks.File
-	srcFile, err = blocks.IndexFile(src)
-	if srcFile == nil {
-		return nil, err
-	}
-	
-	match, err = MatchFile(srcFile, dst)
-	return match, err
-}
-
-func MatchFile(srcFile *blocks.File, dst string) (match *FileMatch, err os.Error) {
-	srcBlockIndex := blocks.IndexBlocks(srcFile)
-	
-	match, err = MatchIndex(srcBlockIndex, dst)
-	if match != nil {
-		match.SrcSize = srcFile.Size
-	}
-	
-	return match, err
-}
-
-func MatchIndex(srcBlockIndex *blocks.BlockIndex, dst string) (match *FileMatch, err os.Error) {
-	match = new(FileMatch)
-	var dstOffset int64
-	
-	dstF, err := os.Open(dst)
-	if dstF == nil {
-		return nil, err
-	}
-	defer dstF.Close()
-	
-	if dstInfo, err := dstF.Stat(); dstInfo != nil {
-		match.DstSize = dstInfo.Size
-	} else {
-		return nil, err
-	}
-	
-	dstWeak := new(blocks.WeakChecksum)
-	var buf [blocks.BLOCKSIZE]byte
-	var sbuf [1]byte
-	var window []byte
-	
-	// Scan a block,
-	// then roll checksum a byte at a time until match or eof
-	// repeat above until eof
-SCAN:
-	for {
-		switch rd, err := dstF.Read(buf[:]); true {
-		case rd < 0:
-			return nil, err
-			
-		case rd == 0:
-			break SCAN
-		
-		case rd > 0:
-			blocksize := rd
-			dstOffset += int64(rd)
-			window = buf[:rd]
-			
-			dstWeak.Reset()
-			dstWeak.Write(window[:])
-			
-			for {
-				// Check for a weak checksum match
-				if matchBlock, has := srcBlockIndex.WeakMap[dstWeak.Get()]; has {
-					
-					// Double-check with the strong checksum
-					if blocks.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
-					
-						// We've got a block match in dest
-						match.BlockMatches = append(match.BlockMatches, &BlockMatch{
-							SrcBlock:matchBlock, 
-							DstOffset: dstOffset - int64(blocksize) })
-						break
-					}
-				}
-				
-				// Read the next byte
-				switch srd, err := dstF.Read(sbuf[:]); true {
-				case srd < 0:
-					return nil, err
-					
-				case srd == 0:
-					break SCAN
-				
-				case srd == 1:
-					dstOffset++
-					
-					// Roll the weak checksum & the buffer
-					dstWeak.Roll(window[0], sbuf[0])
-					window = append(window[1:], sbuf[0])
-					break
-				
-				case srd > 1:
-					return nil, os.NewError("Internal read error trying advance one byte.")
-				}
-			}
-		}
-	}
-	
-	return match, nil
-}
-
-func (match *FileMatch) NotMatched() (ranges []*RangePair) {
-	start := int64(0)
-	
-	for _, blockMatch := range match.BlockMatches {
-		if start < blockMatch.DstOffset {
-			ranges = append(ranges, &RangePair{From:start, To:blockMatch.DstOffset})
-		}
-		start = blockMatch.DstOffset + int64(blocks.BLOCKSIZE)
-	}
-	
-	if start < match.DstSize {
-		ranges = append(ranges, &RangePair{From:start, To:match.DstSize})
-	}
-	
-	return ranges
-}
 
 func PatchFile(src string, dst string) os.Error {
 	match, err := Match(src, dst)
@@ -225,6 +85,8 @@ SRC_2_NEWDST:
 
 type PatchCmd interface {
 	
+	String() string
+	
 	Exec(srcStore blocks.BlockStore) os.Error
 	
 }
@@ -233,6 +95,10 @@ type PatchCmd interface {
 type Rename struct {
 	From string
 	To string
+}
+
+func (rename *Rename) String() string {
+	return fmt.Sprintf("Rename %s to %s", rename.From, rename.To)
 }
 
 func (rename *Rename) Exec(srcStore blocks.BlockStore) os.Error {
@@ -244,11 +110,19 @@ type Keep struct {
 	Path string
 }
 
+func (keep *Keep) String() string {
+	return fmt.Sprintf("Keep %s", keep.Path)
+}
+
 func (keep *Keep) Exec(srcStore blocks.BlockStore) os.Error { return nil }
 
 // Delete a file.
 type Delete struct {
 	Path string
+}
+
+func (delete *Delete) String() string {
+	return fmt.Sprintf("Delete %s", delete.Path)
 }
 
 func (delete *Delete) Exec(srcStore blocks.BlockStore) os.Error {
@@ -259,6 +133,10 @@ func (delete *Delete) Exec(srcStore blocks.BlockStore) os.Error {
 type Resize struct {
 	Path string
 	Size int64
+}
+
+func (resize *Resize) String() string {
+	return fmt.Sprintf("Resize %s to %d bytes", resize.Path, resize.Size)
 }
 
 func (resize *Resize) Exec(srcStore blocks.BlockStore) os.Error {
@@ -273,6 +151,10 @@ type LocalTemp struct {
 	
 	localFh *os.File
 	tempFh *os.File
+}
+
+func (localTemp *LocalTemp) String() string {
+	return fmt.Sprintf("Create a temporary backup of %s", localTemp.Path)
 }
 
 func (localTemp *LocalTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
@@ -293,6 +175,10 @@ func (localTemp *LocalTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
 // Replace the local file with its temporary
 type ReplaceWithTemp struct {
 	Temp *LocalTemp
+}
+
+func (rwt *ReplaceWithTemp) String() string {
+	return fmt.Sprintf("Replace %s with the temporary backup", rwt.Temp.Path)
 }
 
 func (rwt *ReplaceWithTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
@@ -320,6 +206,11 @@ type LocalTempCopy struct {
 	Length int64
 }
 
+func (ltc *LocalTempCopy) String() string {
+	return fmt.Sprintf("Copy %d bytes from offset %d in target file %s to offset %d in temporary file",
+		ltc.Length, ltc.LocalOffset, ltc.Temp.Path, ltc.TempOffset)
+}
+
 func (ltc *LocalTempCopy) Exec(srcStore blocks.BlockStore) (err os.Error) {
 	_, err = ltc.Temp.localFh.Seek(ltc.LocalOffset, 0)
 	if err != nil { return err }
@@ -340,6 +231,11 @@ type SrcTempCopy struct {
 	Length int64
 }
 
+func (stc *SrcTempCopy) String() string {
+	return fmt.Sprintf("Copy %d bytes from offset %d from source %s to offset %d in temporary file",
+		stc.Length, stc.SrcOffset, stc.SrcStrong, stc.TempOffset)
+}
+
 func (stc *SrcTempCopy) Exec(srcStore blocks.BlockStore) os.Error {
 	stc.Temp.tempFh.Seek(stc.TempOffset, 0)
 	return srcStore.ReadInto(stc.SrcStrong, stc.SrcOffset, stc.Length, stc.Temp.tempFh)
@@ -350,6 +246,10 @@ type SrcFileDownload struct {
 	SrcFile *blocks.File
 	Path string
 	Length int64
+}
+
+func (sfd *SrcFileDownload) String() string {
+	return fmt.Sprintf("Copy entire source %s to %s", sfd.SrcFile.Strong(), sfd.Path)
 }
 
 func (sfd *SrcFileDownload) Exec(srcStore blocks.BlockStore) os.Error {
@@ -392,9 +292,12 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 				dstPath := blocks.RelPath(dstFsNode)
 			
 				if srcPath != dstPath {
-					plan.Cmds = append(plan.Cmds, &Rename{ From:dstPath, To:srcPath })
+					plan.Cmds = append(plan.Cmds, &Rename{ 
+						From: dstStore.LocalPath(dstPath),
+						To: dstStore.LocalPath(srcPath) })
 				} else {
-					plan.Cmds = append(plan.Cmds, &Keep{ Path:srcPath })
+					plan.Cmds = append(plan.Cmds, &Keep{
+						Path: dstStore.LocalPath(srcPath) })
 				}
 			}
 						

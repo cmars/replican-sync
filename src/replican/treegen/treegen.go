@@ -142,7 +142,7 @@ func (f *File) fab(parent string) (os.Error) {
 const CHUNKSIZE int = 8192
 
 func (b *Bytes) fab(parent string) (os.Error) {
-	fh, err := os.OpenFile(parent, os.O_RDWR, 0644)
+	fh, err := os.OpenFile(parent, os.O_RDWR | os.O_APPEND, 0644)
 	if fh == nil { return err }
 	defer fh.Close()
 	

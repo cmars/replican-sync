@@ -139,7 +139,7 @@ func TestPatch(t *testing.T) {
 	assert.Equal(t, srcFile.Strong(), dstFile.Strong())
 }
 
-func TestPatchPlan(t *testing.T) {
+func TestPatchIdentity(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
@@ -152,7 +152,37 @@ func TestPatchPlan(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	fmt.Print(patchPlan.Cmds[0])
+	
+	printPlan(patchPlan)
+	
 	assert.Equal(t, 0, len(patchPlan.Cmds))
 }
+
+func TestPatchFileAppend(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	printPlan(patchPlan)
+	assert.Equal(t, 0, len(patchPlan.Cmds))
+}
+
+func printPlan(plan *PatchPlan) {
+	for i := 0; i < len(plan.Cmds); i++ {
+		fmt.Printf("%s\n", plan.Cmds[i].String())
+	}
+}
+
+
 
