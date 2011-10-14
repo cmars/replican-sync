@@ -2,8 +2,6 @@
 package merge
 
 import (
-	"fmt"
-	_ "io"
 	"os"
 	"path/filepath"
 	"replican/blocks"
@@ -141,6 +139,12 @@ func TestPatch(t *testing.T) {
 	assert.Equal(t, srcFile.Strong(), dstFile.Strong())
 }
 
+func printPlan(plan *PatchPlan) {
+	for i := 0; i < len(plan.Cmds); i++ {
+		fmt.Printf("%s\n", plan.Cmds[i].String())
+	}
+}
+
 func TestPatchIdentity(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -246,12 +250,60 @@ func TestPatchFileAppend(t *testing.T) {
 	
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	srcRoot, _ := blocks.IndexDir(srcpath)
+	dstRoot, _ := blocks.IndexDir(dstpath)
+	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 }
 
-func printPlan(plan *PatchPlan) {
-	for i := 0; i < len(plan.Cmds); i++ {
-		fmt.Printf("%s\n", plan.Cmds[i].String())
+func TestPatchFileTruncate(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+//	printPlan(patchPlan)
+	
+	complete := false
+	for i, cmd := range patchPlan.Cmds {
+		switch {
+		case i == 0:
+			localTemp, isTemp := cmd.(*LocalTemp)
+			assert.T(t, isTemp)
+			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path)
+		case i >= 1 && i <=8:
+			ltc, isLtc := cmd.(*LocalTempCopy)
+			assert.Tf(t, isLtc, "cmd %d", i)
+			assert.Equal(t, ltc.LocalOffset, ltc.TempOffset)
+			assert.Equal(t, int64(blocks.BLOCKSIZE), ltc.Length)
+			assert.Equal(t, int64(0), ltc.LocalOffset % int64(blocks.BLOCKSIZE))
+		case i == 9:
+			stc, isStc := cmd.(*SrcTempCopy)
+			assert.T(t, isStc)
+			assert.Equal(t, int64(1), stc.Length)
+			complete = true
+		case i > 10:
+			t.Fatalf("too many commands")
+		}
 	}
+	assert.T(t, complete, "missing expected number of commands")
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	srcRoot, _ := blocks.IndexDir(srcpath)
+	dstRoot, _ := blocks.IndexDir(dstpath)
+	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 }
 
 
