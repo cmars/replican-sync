@@ -69,8 +69,14 @@ func (treeGen *TreeGen) randomName() string {
 	len := treeGen.rand.Intn(17) + 3
 	buf := &bytes.Buffer{}
 	
+	rndByte := func() byte {
+		return byte(0x20 + treeGen.rand.Intn(0x7e-0x20))
+	}
+	
+	var nextByte byte
 	for i := 0; i < len; i++ {
-		buf.WriteByte(byte(0x20 + treeGen.rand.Intn(0x7e-0x20)))
+		for nextByte = rndByte(); nextByte == byte('/'); nextByte = rndByte() {}
+		buf.WriteByte(nextByte)
 	}
 	
 	return string(buf.Bytes())
@@ -101,7 +107,7 @@ func TestTree(t *testing.T, g Generated) string {
 	assert.Tf(t, err == nil, "Fail to create temp dir")
 	
 	err = Fab(tempdir, g)
-	assert.Tf(t, err == nil, "Fail to fab tree")
+	assert.Tf(t, err == nil, "Fail to fab tree: %v", err)
 	
 	return tempdir
 }
@@ -125,6 +131,13 @@ func (d *Dir) fab(parent string) (os.Error) {
 	err := os.Mkdir(path, 0777)
 	if err != nil { return err }
 	
+	switch len(d.Contents) {
+	case 0:
+		return nil
+	case 1:
+		return fabEntries(path, d.Contents[0], []Generated{})
+	}
+	
 	return fabEntries(path, d.Contents[0], d.Contents[1:])
 }
 
@@ -135,6 +148,13 @@ func (f *File) fab(parent string) (os.Error) {
 	fh, err := os.Create(path)
 	if fh == nil { return err }
 	fh.Close()
+	
+	switch len(f.Contents) {
+	case 0:
+		return nil
+	case 1:
+		return fabEntries(path, f.Contents[0], []Generated{})
+	}
 	
 	return fabEntries(path, f.Contents[0], f.Contents[1:])
 }

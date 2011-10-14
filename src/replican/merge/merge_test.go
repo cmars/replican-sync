@@ -2,6 +2,8 @@
 package merge
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"replican/blocks"
@@ -11,7 +13,12 @@ import (
 	"github.com/bmizerany/assert"
 )
 
-/*
+func printPlan(plan *PatchPlan) {
+	for i := 0; i < len(plan.Cmds); i++ {
+		fmt.Printf("%s\n", plan.Cmds[i].String())
+	}
+}
+
 func TestMatchIdentity(t *testing.T) {
 	srcPath := "./testroot/My Music/0 10k 30.mp4"
 	dstPath := srcPath
@@ -139,12 +146,6 @@ func TestPatch(t *testing.T) {
 	assert.Equal(t, srcFile.Strong(), dstFile.Strong())
 }
 
-func printPlan(plan *PatchPlan) {
-	for i := 0; i < len(plan.Cmds); i++ {
-		fmt.Printf("%s\n", plan.Cmds[i].String())
-	}
-}
-
 func TestPatchIdentity(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -166,7 +167,6 @@ func TestPatchIdentity(t *testing.T) {
 	keep := patchPlan.Cmds[0].(*Keep)
 	assert.Equal(t, dstpath, keep.Path)
 }
-*/
 
 func TestMatchAppend(t *testing.T) {
 	tg := treegen.New()
@@ -208,6 +208,7 @@ func TestPatchFileAppend(t *testing.T) {
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
 	
 	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
 	srcStore, err := blocks.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
 	
@@ -215,6 +216,7 @@ func TestPatchFileAppend(t *testing.T) {
 	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
 	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
 	dstStore, err := blocks.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
 	
@@ -261,6 +263,7 @@ func TestPatchFileTruncate(t *testing.T) {
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
 	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
 	srcStore, err := blocks.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
 	
@@ -268,6 +271,7 @@ func TestPatchFileTruncate(t *testing.T) {
 	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
 	
 	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
 	dstStore, err := blocks.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
 	
@@ -304,6 +308,35 @@ func TestPatchFileTruncate(t *testing.T) {
 	srcRoot, _ := blocks.IndexDir(srcpath)
 	dstRoot, _ := blocks.IndexDir(dstpath)
 	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
+}
+
+func TestPatchAdd(t *testing.T) {
+	tg := treegen.New()
+	
+	files := []treegen.Generated{}
+	for i := 0; i < 10; i++ {
+		files = append(files, tg.F("", tg.B(int64(42*i), int64(500000*i))))
+	}
+	
+	treeSpec := tg.D("foo", tg.D("bar", files...))
+	srcpath := treegen.TestTree(t, treeSpec)
+	srcStore, err := blocks.NewLocalStore(filepath.Join(srcpath, "foo"))
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", tg.D("bar"), tg.D("baz"))
+	dstpath := treegen.TestTree(t, treeSpec)
+	dstStore, err := blocks.NewLocalStore(filepath.Join(dstpath, "foo"))
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	
+	printPlan(patchPlan)
+	
+	for _, cmd := range patchPlan.Cmds {
+		_, isSfd := cmd.(*SrcFileDownload)
+		assert.T(t, isSfd)
+	}
 }
 
 
