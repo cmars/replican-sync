@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"replican/blocks"
 	"replican/treegen"
+	"strings"
 	"testing"
 	
 	"github.com/bmizerany/assert"
@@ -163,9 +164,11 @@ func TestPatchIdentity(t *testing.T) {
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 //	printPlan(patchPlan)
 	
-	assert.Equal(t, 1, len(patchPlan.Cmds))
-	keep := patchPlan.Cmds[0].(*Keep)
-	assert.Equal(t, dstpath, keep.Path)
+	assert.T(t, len(patchPlan.Cmds) > 0)
+	for i := 0; i < len(patchPlan.Cmds); i++ {
+		keep := patchPlan.Cmds[0].(*Keep)
+		assert.T(t, strings.HasPrefix(dstpath, keep.Path))
+	}
 }
 
 func TestMatchAppend(t *testing.T) {
@@ -331,11 +334,77 @@ func TestPatchAdd(t *testing.T) {
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	
-	printPlan(patchPlan)
+//	printPlan(patchPlan)
 	
 	for _, cmd := range patchPlan.Cmds {
 		_, isSfd := cmd.(*SrcFileDownload)
 		assert.T(t, isSfd)
+	}
+}
+
+func TestPatchRenameFileSameDir(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", tg.F("baz", tg.B(42, 65537)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	
+	assert.Equal(t, 1, len(patchPlan.Cmds))
+	rename, isRename := patchPlan.Cmds[0].(*Rename)
+	assert.T(t, isRename)
+	assert.T(t, strings.HasSuffix(rename.From, filepath.Join("foo", "baz")))
+	assert.T(t, strings.HasSuffix(rename.To, filepath.Join("foo", "bar")))
+}
+
+func TestPatchRenameFileDifferentDir(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.D("gloo", 
+						tg.F("bloo", tg.B(99, 99)), 
+						tg.D("groo", 
+							tg.D("snoo", 
+								tg.F("bar", tg.B(42, 65537))))))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("pancake", 
+					tg.F("butter", tg.B(42, 65537)), 
+					tg.F("syrup", tg.B(99, 99)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	assert.Equal(t, 2, len(patchPlan.Cmds))
+	for i := 0; i < len(patchPlan.Cmds); i++ {
+		_, isRename := patchPlan.Cmds[0].(*Rename)
+		assert.T(t, isRename)
+	}
+	
+	// Now flip
+	patchPlan = NewPatchPlan(dstStore, srcStore)
+	assert.Equal(t, 2, len(patchPlan.Cmds))
+	for i := 0; i < len(patchPlan.Cmds); i++ {
+		_, isRename := patchPlan.Cmds[0].(*Rename)
+		assert.T(t, isRename)
 	}
 }
 

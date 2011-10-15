@@ -192,25 +192,74 @@ func IndexBlock(buf []byte) (block *Block) {
 
 // Represent a flat mapping between checksum and Nodes in a hierarchical index.
 type BlockIndex struct {
-	WeakMap map[int]*Block 
-	StrongMap map[string]Node
+	weakBlocks map[int]*Block 
+	strongBlocks map[string]*Block
+	strongFiles map[string]*File
+	strongDirs map[string]*Dir
+}
+
+func (index *BlockIndex) WeakBlock(weak int) (block *Block, has bool) {
+	block, has = index.weakBlocks[weak]
+	return block, has
+}
+
+func (index *BlockIndex) StrongNode(strong string) (Node, bool) {
+	block, has := index.strongBlocks[strong]
+	if has { return block, true }
+	
+	return index.StrongFsNode(strong)
+}
+
+func (index *BlockIndex) StrongFsNode(strong string) (FsNode, bool) {
+	file, has := index.strongFiles[strong]
+	if has { return file, true }
+	
+	dir, has := index.strongDirs[strong]
+	if has { return dir, true }
+	
+	return nil, false
+}
+
+func (index *BlockIndex) StrongBlock(strong string) (block *Block, has bool) {
+	block, has = index.strongBlocks[strong]
+	return block, has
+}
+
+func (index *BlockIndex) StrongFile(strong string) (file *File, has bool) {
+	file, has = index.strongFiles[strong]
+	return file, has
+}
+
+func (index *BlockIndex) StrongDir(strong string) (dir *Dir, has bool) {
+	dir, has = index.strongDirs[strong]
+	return dir, has
 }
 
 // Derive a flattened BlockIndex from a top-level Node.
 func IndexBlocks(node Node) (index *BlockIndex) {
 	index = new(BlockIndex)
-	index.WeakMap = make(map[int]*Block)
-	index.StrongMap = make(map[string]Node)
+	index.weakBlocks = make(map[int]*Block)
+	index.strongBlocks = make(map[string]*Block)
+	index.strongFiles = make(map[string]*File)
+	index.strongDirs = make(map[string]*Dir)
 	
 	Walk(node, func(current Node) bool {
-		index.StrongMap[current.Strong()] = current
-		if block, isblock := current.(*Block); isblock {
-			index.WeakMap[block.Weak()] = block
+		switch t := current.(type) {
+		case *Block:
+			block := current.(*Block)
+			index.strongBlocks[current.Strong()] = block
+			index.weakBlocks[block.Weak()] = block
+			return false
+		case *File:
+			index.strongFiles[current.Strong()] = current.(*File)
+		case *Dir:
+			index.strongDirs[current.Strong()] = current.(*Dir)
 		}
 		return true
 	})
 	
 	return index
 }
+
 
 

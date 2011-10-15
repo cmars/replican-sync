@@ -53,14 +53,11 @@ func (store *LocalStore) Root() *Dir { return store.root }
 func (store *LocalStore) Index() *BlockIndex { return store.index }
 
 func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
-	maybeBlock, has := store.index.StrongMap[strong]
+	block, has := store.index.StrongBlock(strong)
 	if !has { 
 		return nil, os.NewError(
 				fmt.Sprintf("Block with strong checksum %s not found", strong))
 	}
-	
-	block, is := maybeBlock.(*Block)
-	if !is { return nil, os.NewError(fmt.Sprintf("%s: not a block", strong)) }
 	
 	buf := &bytes.Buffer{}
 	err := store.ReadInto(block.Parent().Strong(), block.Offset(), int64(BLOCKSIZE), buf)
@@ -73,7 +70,7 @@ func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
 
 func (store *LocalStore) ReadInto(strong string, from int64, length int64, writer io.Writer) os.Error {
 	
-	node, has := store.index.StrongMap[strong]
+	node, has := store.index.StrongNode(strong)
 	if !has {
 		return os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
 	}

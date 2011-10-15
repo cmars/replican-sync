@@ -94,7 +94,7 @@ SCAN:
 			
 			for {
 				// Check for a weak checksum match
-				if matchBlock, has := srcBlockIndex.WeakMap[dstWeak.Get()]; has {
+				if matchBlock, has := srcBlockIndex.WeakBlock(dstWeak.Get()); has {
 					
 					// Double-check with the strong checksum
 					if blocks.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {

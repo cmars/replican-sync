@@ -277,34 +277,39 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 	blocks.Walk(srcStore.Root(), func(srcNode blocks.Node) bool {
 		
 		// Ignore non-FsNodes
-		srcFsNode, isFsNode := srcNode.(blocks.FsNode)
-		if !isFsNode {
+		srcFsNode, isSrcFsNode := srcNode.(blocks.FsNode)
+		if !isSrcFsNode {
 			return false
 		}
 		
-		srcFile, isFile := srcNode.(*blocks.File)
+		srcFile, isSrcFile := srcNode.(*blocks.File)
 		srcPath := blocks.RelPath(srcFsNode)
 		
-		// Try to match at the file level. Might be a Rename or leave in place
-		if dstNode, has := dstStore.Index().StrongMap[srcNode.Strong()]; has {
+		dstNode, hasDstNode := dstStore.Index().StrongFsNode(srcNode.Strong())
+		
+		isDstFile := false
+		if hasDstNode {
+			_, isDstFile = dstNode.(*blocks.File)
+		}
+		
+//		fmt.Printf("srcPath=%s hasDstNode=%v isDstFsNode=%v isSrcFile=%v, isDstFile=%v\n%v\n\n",
+//			srcPath, hasDstNode, isDstFsNode, isSrcFile, isDstFile, dstNode)
+		
+		// Resolve dst node that matches strong checksum with source
+		if hasDstNode && isSrcFile == isDstFile {
+			dstPath := blocks.RelPath(dstNode)
 			
-			if dstFsNode, isFsNode := dstNode.(blocks.FsNode); isFsNode {
-				dstPath := blocks.RelPath(dstFsNode)
-			
-				if srcPath != dstPath {
-					plan.Cmds = append(plan.Cmds, &Rename{ 
-						From: dstStore.LocalPath(dstPath),
-						To: dstStore.LocalPath(srcPath) })
-				} else {
-					plan.Cmds = append(plan.Cmds, &Keep{
-						Path: dstStore.LocalPath(srcPath) })
-				}
+			if srcPath != dstPath {
+				plan.Cmds = append(plan.Cmds, &Rename{ 
+					From: dstStore.LocalPath(dstPath),
+					To: dstStore.LocalPath(srcPath) })
+			} else {
+				plan.Cmds = append(plan.Cmds, &Keep{
+					Path: dstStore.LocalPath(srcPath) })
 			}
-						
-			return false
 			
 		// If its a file, figure out what to do with it
-		} else if (isFile) {
+		} else if (isSrcFile) {
 			dstFilePath := dstStore.LocalPath(blocks.RelPath(srcFile))
 			
 			switch dstFileInfo, _ := os.Stat(dstFilePath); true {
@@ -329,7 +334,7 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			}
 		}
 		
-		return !isFile
+		return !isSrcFile
 	})
 	
 	return plan 
