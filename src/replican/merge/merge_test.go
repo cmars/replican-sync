@@ -14,12 +14,14 @@ import (
 	"github.com/bmizerany/assert"
 )
 
+// Print a description of the steps that the patch plan will follow.
 func printPlan(plan *PatchPlan) {
 	for i := 0; i < len(plan.Cmds); i++ {
 		fmt.Printf("%s\n", plan.Cmds[i].String())
 	}
 }
 
+// Test that the matcher matches all blocks in two identical files.
 func TestMatchIdentity(t *testing.T) {
 	srcPath := "./testroot/My Music/0 10k 30.mp4"
 	dstPath := srcPath
@@ -53,6 +55,8 @@ func TestMatchIdentity(t *testing.T) {
 			"Unxpected last block size: %d", lastBlockSize)
 }
 
+// Test that the matcher matches blocks properly between two different files.
+// The munged file has a few bytes changed at known offsets which we check for.
 func TestMatchMunge(t *testing.T) {
 	srcPath := "./testroot/My Music/0 10k 30.mp4"
 	dstPath := "./testroot/My Music/0 10k 30 munged.mp4"
@@ -75,6 +79,9 @@ func TestMatchMunge(t *testing.T) {
 	assert.Equal(t, 2, len(notMatches))
 }
 
+// Test some corner cases of FileMatch.NotMatched to correctly 
+// identify unmatched ranges between two files. No files were harmed 
+// in the creation of this test, we're fabricating a fake FileMatch.
 func TestHoles(t *testing.T) {
 	testMatch := &FileMatch{ 
 		SrcSize:99099, DstSize:99099, 
@@ -116,6 +123,8 @@ func TestHoles(t *testing.T) {
 	}
 }
 
+// Test an actual file patch on the munged file scenario from TestMatchMunge.
+// Resulting patched file should be identical to the source file.
 func TestPatch(t *testing.T) {
 	srcPath := "testroot/My Music/0 10k 30.mp4"
 	dstPath := "/var/tmp/foo.mp4"
@@ -147,6 +156,7 @@ func TestPatch(t *testing.T) {
 	assert.Equal(t, srcFile.Strong(), dstFile.Strong())
 }
 
+// Test the patch planner on two identical directory structures.
 func TestPatchIdentity(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -171,6 +181,8 @@ func TestPatchIdentity(t *testing.T) {
 	}
 }
 
+// Test the matcher on a case where the source file has the same 
+// prefix as destination, but has been appended to.
 func TestMatchAppend(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.F("bar", tg.B(42, 65537), tg.B(43, 65537))
@@ -206,6 +218,9 @@ func TestMatchAppend(t *testing.T) {
 	assert.Equal(t, int64(65537+65537), notMatched[0].To)
 }
 
+// Test the patch planner on a case where the source file has the same 
+// prefix as destination, but has been appended to.
+// Execute the patch plan and check both resulting trees are identical.
 func TestPatchFileAppend(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
@@ -261,6 +276,9 @@ func TestPatchFileAppend(t *testing.T) {
 	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 }
 
+// Test the patch planner on a case where the source file is a shorter,
+// truncated version of the destination.
+// Execute the patch plan and check both resulting trees are identical.
 func TestPatchFileTruncate(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -313,6 +331,7 @@ func TestPatchFileTruncate(t *testing.T) {
 	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 }
 
+// Test the patch planner's ability to track adding a bunch of new files.
 func TestPatchAdd(t *testing.T) {
 	tg := treegen.New()
 	
@@ -342,6 +361,7 @@ func TestPatchAdd(t *testing.T) {
 	}
 }
 
+// Test patch planner on a file rename. Contents remain the same.
 func TestPatchRenameFileSameDir(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -368,6 +388,8 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 	assert.T(t, strings.HasSuffix(rename.To, filepath.Join("foo", "bar")))
 }
 
+// Test patch planner on a file directory restructuring between 
+// source and destination, where files have identical content in both.
 func TestPatchRenameFileDifferentDir(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", 
@@ -406,6 +428,40 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 		_, isRename := patchPlan.Cmds[0].(*Rename)
 		assert.T(t, isRename)
 	}
+}
+
+// Test patch planner on case where the source and 
+// destination have a direct conflict in structure.
+// A path in the source is a directory, path in destination 
+// already contains a file at that location.
+func TestPatchSimpleDirFileConflict(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.D("gloo", 
+						tg.F("bloo", tg.B(99, 99)), 
+						tg.D("groo", 
+							tg.D("snoo", 
+								tg.F("bar", tg.B(42, 65537))))))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+					tg.F("gloo", tg.B(99, 999)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	printPlan(patchPlan)
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 }
 
 
