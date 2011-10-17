@@ -458,7 +458,78 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
+//	printPlan(patchPlan)
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	assert.Equal(t, 3, len(patchPlan.Cmds))
+	for i, cmd := range patchPlan.Cmds {
+		switch i {
+		case 0:
+			delete, is := cmd.(*Delete)
+			assert.T(t, is)
+			assert.T(t, strings.HasSuffix(delete.Path, "foo/gloo"))
+		case 1:
+			copy, is := cmd.(*SrcFileDownload)
+			assert.T(t, is)
+			assert.Equal(t, "beced72da0cf22301e23bdccec61bf9763effd6f", copy.SrcFile.Strong())
+		case 2:
+			copy, is := cmd.(*SrcFileDownload)
+			assert.T(t, is)
+			assert.Equal(t, "764b5f659f70e69d4a87fe6ed138af40be36c514", copy.SrcFile.Strong())
+		}
+	}
+}
+
+// Test patch planner on case where the source and 
+// destination have a direct conflict in structure.
+// A path in the source is a directory, path in destination 
+// already contains a file at that location.
+func TestPatchRelocConflict(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.D("gloo", 
+						tg.F("bloo", tg.B(99, 99)), 
+						tg.D("groo", 
+							tg.D("snoo", 
+								tg.F("bar", tg.B(42, 65537))))))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+					tg.F("gloo", tg.B(99, 99)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
 	printPlan(patchPlan)
+	
+	assert.Equal(t, 3, len(patchPlan.Cmds))
+	for i, cmd := range patchPlan.Cmds {
+		switch i {
+		case 0:
+			delete, is := cmd.(*Delete)
+			assert.T(t, is)
+			assert.T(t, strings.HasSuffix(delete.Path, "foo/gloo"))
+		case 1:
+			rename, is := cmd.(*Rename)
+			assert.T(t, is)
+			assert.T(t, strings.HasSuffix(rename.From, "foo/gloo"))
+			assert.T(t, strings.HasSuffix(rename.To, "foo/gloo/bloo"))
+		case 2:
+			copy, is := cmd.(*SrcFileDownload)
+			assert.T(t, is)
+			assert.Equal(t, "764b5f659f70e69d4a87fe6ed138af40be36c514", copy.SrcFile.Strong())
+		}
+	}
 	
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)

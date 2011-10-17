@@ -253,6 +253,11 @@ func (sfd *SrcFileDownload) String() string {
 }
 
 func (sfd *SrcFileDownload) Exec(srcStore blocks.BlockStore) os.Error {
+	dstDir, _ := filepath.Split(sfd.Path)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		return err
+	}
+	
 	dstFh, err := os.Create(sfd.Path)
 	if dstFh == nil { return err }
 	
@@ -292,6 +297,9 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			_, isDstFile = dstNode.(*blocks.File)
 		}
 		
+		dstFilePath := dstStore.LocalPath(blocks.RelPath(srcFsNode))
+		dstFileInfo, _ := os.Stat(dstFilePath)
+		
 //		fmt.Printf("srcPath=%s hasDstNode=%v isDstFsNode=%v isSrcFile=%v, isDstFile=%v\n%v\n\n",
 //			srcPath, hasDstNode, isDstFsNode, isSrcFile, isDstFile, dstNode)
 		
@@ -310,13 +318,12 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			
 		// If its a file, figure out what to do with it
 		} else if (isSrcFile) {
-			dstFilePath := dstStore.LocalPath(blocks.RelPath(srcFile))
 			
-			switch dstFileInfo, _ := os.Stat(dstFilePath); true {
+			switch {
 			
 			// Destination is not a file, so get rid of whatever is there first
 			case dstFileInfo != nil && !dstFileInfo.IsRegular():
-				plan.Cmds = append(plan.Cmds, &Delete{ Path: srcPath })
+				plan.Cmds = append(plan.Cmds, &Delete{ Path: dstFilePath })
 				fallthrough
 			
 			// Destination file does not exist, so full source copy needed
@@ -330,7 +337,13 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			default:
 				plan.appendFilePlan(srcFile, dstFilePath)
 				break
+			}
 			
+		// If its a directory, check for conflicting files of same name
+		} else {
+			
+			if dstFileInfo != nil && !dstFileInfo.IsDirectory() {
+				plan.Cmds = append(plan.Cmds, &Delete{ Path: dstFilePath })
 			}
 		}
 		

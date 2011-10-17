@@ -70,13 +70,10 @@ func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
 
 func (store *LocalStore) ReadInto(strong string, from int64, length int64, writer io.Writer) os.Error {
 	
-	node, has := store.index.StrongNode(strong)
+	file, has := store.index.StrongFile(strong)
 	if !has {
 		return os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
 	}
-	
-	file, is := node.(*File)
-	if !is { return os.NewError(fmt.Sprintf("%s: not a file", strong)) }
 	
 	path := store.LocalPath(RelPath(file))
 	
