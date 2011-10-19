@@ -83,6 +83,29 @@ SRC_2_NEWDST:
 	return nil
 }
 
+type PathRef interface {
+	Resolve() string
+}
+
+type AbsolutePath string
+
+func (absPath AbsolutePath) Resolve() string {
+	return string(absPath)
+}
+
+type LocalPath struct {
+	LocalStore *blocks.LocalStore
+	RelPath string
+}
+
+func (localPath *LocalPath) String() string {
+	return localPath.RelPath
+}
+
+func (localPath *LocalPath) Resolve() string {
+	return localPath.LocalStore.Resolve(localPath.RelPath)
+}
+
 type PatchCmd interface {
 	
 	String() string
@@ -91,10 +114,18 @@ type PatchCmd interface {
 	
 }
 
+func mkParentDirs(path PathRef) (os.Error) {
+	dir, _ := filepath.Split(path.Resolve())
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Rename a file.
 type Rename struct {
-	From string
-	To string
+	From PathRef
+	To PathRef
 }
 
 func (rename *Rename) String() string {
@@ -102,36 +133,48 @@ func (rename *Rename) String() string {
 }
 
 func (rename *Rename) Exec(srcStore blocks.BlockStore) os.Error {
-	return os.Rename(rename.From, rename.To)
+	if err := mkParentDirs(rename.To); err != nil { return err }
+	
+	return os.Rename(rename.From.Resolve(), rename.To.Resolve())
 }
 
 // Keep a file. Yeah, that's right. Just leave it alone.
 type Keep struct {
-	Path string
+	Path PathRef
 }
 
 func (keep *Keep) String() string {
-	return fmt.Sprintf("Keep %s", keep.Path)
+	return fmt.Sprintf("Keep %s", keep.Path.Resolve())
 }
 
-func (keep *Keep) Exec(srcStore blocks.BlockStore) os.Error { return nil }
-
-// Delete a file.
-type Delete struct {
-	Path string
+func (keep *Keep) Exec(srcStore blocks.BlockStore) os.Error { 
+	return nil
 }
 
-func (delete *Delete) String() string {
-	return fmt.Sprintf("Delete %s", delete.Path)
+// Register a conflict
+type Conflict struct {
+	Path *LocalPath
+	FileInfo *os.FileInfo
+	
+	relocPath string
 }
 
-func (delete *Delete) Exec(srcStore blocks.BlockStore) os.Error {
-	return os.RemoveAll(delete.Path)
+func (conflict *Conflict) String() string {
+	return fmt.Sprintf("Conflict found at %s, redirecting...", conflict.Path)
+}
+
+func (conflict *Conflict) Exec(srcStore blocks.BlockStore) (err os.Error) {
+	conflict.relocPath, err = conflict.Path.LocalStore.Relocate(conflict.Path.RelPath)
+	return err
+}
+
+func (conflict *Conflict) Cleanup() os.Error {
+	return os.RemoveAll(conflict.relocPath)
 }
 
 // Set a file to a different size. Paths are relative.
 type Resize struct {
-	Path string
+	Path PathRef
 	Size int64
 }
 
@@ -140,13 +183,13 @@ func (resize *Resize) String() string {
 }
 
 func (resize *Resize) Exec(srcStore blocks.BlockStore) os.Error {
-	return os.Truncate(resize.Path, resize.Size)
+	return os.Truncate(resize.Path.Resolve(), resize.Size)
 }
 
 // Start a temp file to recieve changes on a local destination file.
 // The temporary file is created with specified size and no contents.
 type LocalTemp struct {
-	Path string
+	Path PathRef
 	Size int64
 	
 	localFh *os.File
@@ -158,10 +201,10 @@ func (localTemp *LocalTemp) String() string {
 }
 
 func (localTemp *LocalTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
-	localTemp.localFh, err = os.Open(localTemp.Path)
+	localTemp.localFh, err = os.Open(localTemp.Path.Resolve())
 	if localTemp.localFh == nil { return err }
 	
-	localDir, localName := filepath.Split(localTemp.Path)
+	localDir, localName := filepath.Split(localTemp.Path.Resolve())
 	
 	localTemp.tempFh, err = ioutil.TempFile(localDir, localName)
 	if localTemp.tempFh == nil { return err }
@@ -189,10 +232,10 @@ func (rwt *ReplaceWithTemp) Exec(srcStore blocks.BlockStore) (err os.Error) {
 	rwt.Temp.tempFh.Close()
 	rwt.Temp.tempFh = nil
 	
-	err = os.Remove(rwt.Temp.Path)
+	err = os.Remove(rwt.Temp.Path.Resolve())
 	if err != nil { return err }
 	
-	err = os.Rename(tempName, rwt.Temp.Path)
+	err = os.Rename(tempName, rwt.Temp.Path.Resolve())
 	if err != nil { return err }
 	
 	return nil
@@ -244,7 +287,7 @@ func (stc *SrcTempCopy) Exec(srcStore blocks.BlockStore) os.Error {
 // Copy a range of data from the source file to the destination file.
 type SrcFileDownload struct {
 	SrcFile *blocks.File
-	Path string
+	Path PathRef
 	Length int64
 }
 
@@ -253,12 +296,9 @@ func (sfd *SrcFileDownload) String() string {
 }
 
 func (sfd *SrcFileDownload) Exec(srcStore blocks.BlockStore) os.Error {
-	dstDir, _ := filepath.Split(sfd.Path)
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return err
-	}
+	if err := mkParentDirs(sfd.Path); err != nil { return err }
 	
-	dstFh, err := os.Create(sfd.Path)
+	dstFh, err := os.Create(sfd.Path.Resolve())
 	if dstFh == nil { return err }
 	
 	return srcStore.ReadInto(sfd.SrcFile.Strong(), 0, sfd.SrcFile.Size, dstFh)
@@ -270,7 +310,7 @@ type PatchPlan struct {
 	Cmds []PatchCmd
 	
 	srcStore blocks.BlockStore
-	dstStore blocks.BlockStore
+	dstStore *blocks.LocalStore
 }
 
 func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *PatchPlan {
@@ -297,7 +337,7 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			_, isDstFile = dstNode.(*blocks.File)
 		}
 		
-		dstFilePath := dstStore.LocalPath(blocks.RelPath(srcFsNode))
+		dstFilePath := dstStore.Resolve(srcPath)
 		dstFileInfo, _ := os.Stat(dstFilePath)
 		
 //		fmt.Printf("srcPath=%s hasDstNode=%v isDstFsNode=%v isSrcFile=%v, isDstFile=%v\n%v\n\n",
@@ -309,11 +349,11 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			
 			if srcPath != dstPath {
 				plan.Cmds = append(plan.Cmds, &Rename{ 
-					From: dstStore.LocalPath(dstPath),
-					To: dstStore.LocalPath(srcPath) })
+					From: &LocalPath{ LocalStore: dstStore, RelPath: dstPath },
+					To: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
 			} else {
 				plan.Cmds = append(plan.Cmds, &Keep{
-					Path: dstStore.LocalPath(srcPath) })
+					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
 			}
 			
 		// If its a file, figure out what to do with it
@@ -323,19 +363,21 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 			
 			// Destination is not a file, so get rid of whatever is there first
 			case dstFileInfo != nil && !dstFileInfo.IsRegular():
-				plan.Cmds = append(plan.Cmds, &Delete{ Path: dstFilePath })
+				plan.Cmds = append(plan.Cmds, &Conflict{ 
+					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }, 
+					FileInfo: dstFileInfo })
 				fallthrough
 			
 			// Destination file does not exist, so full source copy needed
 			case dstFileInfo == nil:
 				plan.Cmds = append(plan.Cmds, &SrcFileDownload{
 					SrcFile: srcFile,
-					Path: dstFilePath})
+					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
 				break
 			
 			// Destination file exists, add block-level commands
 			default:
-				plan.appendFilePlan(srcFile, dstFilePath)
+				plan.appendFilePlan(srcFile, srcPath)
 				break
 			}
 			
@@ -343,7 +385,9 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 		} else {
 			
 			if dstFileInfo != nil && !dstFileInfo.IsDirectory() {
-				plan.Cmds = append(plan.Cmds, &Delete{ Path: dstFilePath })
+				plan.Cmds = append(plan.Cmds, &Conflict{ 
+					Path: &LocalPath{ LocalStore: dstStore, RelPath: dstFilePath },
+					FileInfo: dstFileInfo })
 			}
 		}
 		
@@ -354,24 +398,38 @@ func NewPatchPlan(srcStore blocks.BlockStore, dstStore *blocks.LocalStore) *Patc
 }
 
 func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
+	conflicts := []*Conflict{}
 	for _, cmd := range plan.Cmds {
 		err = cmd.Exec(plan.srcStore)
 		if err != nil {
 			return cmd, err
 		}
+		
+		if conflict, is := cmd.(*Conflict); is {
+			conflicts = append(conflicts, conflict)
+		}
 	}
+	
+	for _, conflict := range conflicts {
+		conflict.Cleanup()
+	}
+	
 	return nil, nil
 }
 
-func (plan *PatchPlan) appendFilePlan(srcFile *blocks.File, dst string) os.Error {
-	match, err := MatchIndex(plan.srcStore.Index(), dst)
+func (plan *PatchPlan) appendFilePlan(srcFile *blocks.File, dstPath string) os.Error {
+	match, err := MatchIndex(plan.srcStore.Index(), plan.dstStore.Resolve(dstPath))
 	if match == nil {
 		return err
 	}
 	match.SrcSize = srcFile.Size
 	
 	// Create a local temporary file in which to effect changes
-	localTemp := &LocalTemp{ Path: dst, Size: match.SrcSize }
+	localTemp := &LocalTemp{ 
+		Path: &LocalPath{ 
+			LocalStore: plan.dstStore,
+			RelPath: dstPath },
+		Size: match.SrcSize }
 	plan.Cmds = append(plan.Cmds, localTemp)
 	
 	for _, blockMatch := range match.BlockMatches {

@@ -3,6 +3,7 @@ package blocks
 
 import (
 	"os"
+	"path/filepath"
 	"replican/treegen"
 	"strings"
 	"testing"
@@ -98,7 +99,7 @@ func testVisitBlocks(t *testing.T) {
 	assert.Tf(t, matched, "Failed to find expected block")
 }
 
-func TestRelPath(t *testing.T) {
+func TestNodeRelPath(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
@@ -114,4 +115,35 @@ func TestRelPath(t *testing.T) {
 	
 	assert.Equal(t, "foo/bar", RelPath(dir.SubDirs[0].Files[0]))
 }
+
+func TestStoreRelPath(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	
+	path := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(path)
+	
+	store, err := NewLocalStore(path)
+	assert.T(t, err == nil)
+	
+	relFoo := store.RelPath(filepath.Join(path, "foo"))
+	assert.Equalf(t, "foo", relFoo, "%v: not a foo", relFoo)
+	
+	// Relocate bar
+	newBar, err := store.Relocate(filepath.Join(filepath.Join(path, "foo"), "bar"))
+	assert.T(t, err == nil)
+	
+	// new bar's parent should still be foo
+	newBarParent, _ := filepath.Split(newBar)
+	newBarParent = strings.TrimRight(newBarParent, "/\\")
+	
+	// old bar should not exist
+	_, err = os.Stat(filepath.Join(filepath.Join(path, "foo"), "bar"))
+	assert.T(t, err != nil)
+	
+	assert.Equal(t, newBar, store.Resolve("foo/bar"), "reloc path %s != resolve foo/bar %s",
+		newBar, store.Resolve("foo/bar"))
+}
+
+
 

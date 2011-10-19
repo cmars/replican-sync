@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Provide access to the raw byte storage.
@@ -30,21 +32,63 @@ type LocalStore struct {
 	rootPath string
 	root *Dir
 	index *BlockIndex
+	relocs map[string]string
 }
 
 func NewLocalStore(rootPath string) (*LocalStore, os.Error) {
 	local := &LocalStore{rootPath:rootPath}
+	local.relocs = make(map[string]string)
 	
-	var err os.Error
+	if err := local.reindex(); local.root == nil {
+		return nil, err
+	}
 	
-	local.root, err = IndexDir(rootPath)
-	if local.root == nil { return nil, err }
-	
-	local.index = IndexBlocks(local.root)
 	return local, nil
 }
 
-func (store *LocalStore) LocalPath(relpath string) string {
+func (store *LocalStore) reindex() (err os.Error) {
+	store.root, err = IndexDir(store.rootPath)
+	if store.root == nil { return err }
+	
+	store.index = IndexBlocks(store.root)
+	return nil
+}
+
+func (store *LocalStore) RelPath(fullpath string) (relpath string) {
+	relpath = strings.TrimLeft(fullpath, store.rootPath)
+	relpath = strings.TrimLeft(relpath, "/\\")
+	return relpath
+}
+
+const RELOC_PREFIX string = "_reloc"
+
+func (store *LocalStore) Relocate(fullpath string) (relocFullpath string, err os.Error) {
+	relocFh, err := ioutil.TempFile(store.rootPath, RELOC_PREFIX)
+	if err != nil { return "", err }
+	
+	relocFullpath = relocFh.Name()
+	
+	err = relocFh.Close()
+	if err != nil { return "", err }
+	
+	err = os.Remove(relocFh.Name())
+	if err != nil { return "", err }
+	
+	err = os.Rename(fullpath, relocFullpath)
+	if err != nil { return "", err }
+	
+	relpath := store.RelPath(fullpath)
+	relocRelpath := store.RelPath(relocFullpath)
+	
+	store.relocs[relpath] = relocRelpath
+	return relocFullpath, nil
+}
+
+func (store *LocalStore) Resolve(relpath string) string {
+	if relocPath, hasReloc := store.relocs[relpath]; hasReloc {
+		relpath = relocPath
+	}
+	
 	return filepath.Join(store.rootPath, relpath)
 }
 
@@ -75,7 +119,7 @@ func (store *LocalStore) ReadInto(strong string, from int64, length int64, write
 		return os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
 	}
 	
-	path := store.LocalPath(RelPath(file))
+	path := store.Resolve(RelPath(file))
 	
 	fh, err := os.Open(path)
 	if fh == nil { return err }
@@ -90,5 +134,6 @@ func (store *LocalStore) ReadInto(strong string, from int64, length int64, write
 	
 	return nil
 }
+
 
 

@@ -177,7 +177,7 @@ func TestPatchIdentity(t *testing.T) {
 	assert.T(t, len(patchPlan.Cmds) > 0)
 	for i := 0; i < len(patchPlan.Cmds); i++ {
 		keep := patchPlan.Cmds[0].(*Keep)
-		assert.T(t, strings.HasPrefix(dstpath, keep.Path))
+		assert.T(t, strings.HasPrefix(dstpath, keep.Path.Resolve()))
 	}
 }
 
@@ -247,7 +247,7 @@ func TestPatchFileAppend(t *testing.T) {
 		case i == 0:
 			localTemp, isTemp := cmd.(*LocalTemp)
 			assert.T(t, isTemp)
-			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path)
+			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path.Resolve())
 		case i >= 1 && i <=8:
 			ltc, isLtc := cmd.(*LocalTempCopy)
 			assert.Tf(t, isLtc, "cmd %d", i)
@@ -305,7 +305,7 @@ func TestPatchFileTruncate(t *testing.T) {
 		case i == 0:
 			localTemp, isTemp := cmd.(*LocalTemp)
 			assert.T(t, isTemp)
-			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path)
+			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path.Resolve())
 		case i >= 1 && i <=8:
 			ltc, isLtc := cmd.(*LocalTempCopy)
 			assert.Tf(t, isLtc, "cmd %d", i)
@@ -342,12 +342,14 @@ func TestPatchAdd(t *testing.T) {
 	
 	treeSpec := tg.D("foo", tg.D("bar", files...))
 	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
 	srcStore, err := blocks.NewLocalStore(filepath.Join(srcpath, "foo"))
 	assert.T(t, err == nil)
 	
 	tg = treegen.New()
 	treeSpec = tg.D("foo", tg.D("bar"), tg.D("baz"))
 	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
 	dstStore, err := blocks.NewLocalStore(filepath.Join(dstpath, "foo"))
 	assert.T(t, err == nil)
 	
@@ -384,8 +386,8 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 	assert.Equal(t, 1, len(patchPlan.Cmds))
 	rename, isRename := patchPlan.Cmds[0].(*Rename)
 	assert.T(t, isRename)
-	assert.T(t, strings.HasSuffix(rename.From, filepath.Join("foo", "baz")))
-	assert.T(t, strings.HasSuffix(rename.To, filepath.Join("foo", "bar")))
+	assert.T(t, strings.HasSuffix(rename.From.Resolve(), filepath.Join("foo", "baz")))
+	assert.T(t, strings.HasSuffix(rename.To.Resolve(), filepath.Join("foo", "bar")))
 }
 
 // Test patch planner on a file directory restructuring between 
@@ -467,9 +469,9 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 	for i, cmd := range patchPlan.Cmds {
 		switch i {
 		case 0:
-			delete, is := cmd.(*Delete)
+			conflict, is := cmd.(*Conflict)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(delete.Path, "foo/gloo"))
+			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, "foo/gloo"))
 		case 1:
 			copy, is := cmd.(*SrcFileDownload)
 			assert.T(t, is)
@@ -479,6 +481,18 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 			assert.T(t, is)
 			assert.Equal(t, "764b5f659f70e69d4a87fe6ed138af40be36c514", copy.SrcFile.Strong())
 		}
+	}
+}
+
+func assertNoRelocs(t *testing.T, path string) {
+	d, err := os.Open(path)
+	assert.T(t, err == nil)
+	
+	names, err := d.Readdirnames(0)
+	assert.T(t, err == nil)
+	
+	for _, name := range names {
+		assert.T(t, !strings.HasPrefix(name, "_reloc"))
 	}
 }
 
@@ -510,20 +524,20 @@ func TestPatchRelocConflict(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	printPlan(patchPlan)
+//	printPlan(patchPlan)
 	
 	assert.Equal(t, 3, len(patchPlan.Cmds))
 	for i, cmd := range patchPlan.Cmds {
 		switch i {
 		case 0:
-			delete, is := cmd.(*Delete)
+			conflict, is := cmd.(*Conflict)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(delete.Path, "foo/gloo"))
+			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, "foo/gloo"))
 		case 1:
 			rename, is := cmd.(*Rename)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(rename.From, "foo/gloo"))
-			assert.T(t, strings.HasSuffix(rename.To, "foo/gloo/bloo"))
+			assert.T(t, strings.HasSuffix(rename.From.Resolve(), "foo/gloo"))
+			assert.T(t, strings.HasSuffix(rename.To.Resolve(), "foo/gloo/bloo"))
 		case 2:
 			copy, is := cmd.(*SrcFileDownload)
 			assert.T(t, is)
@@ -533,6 +547,41 @@ func TestPatchRelocConflict(t *testing.T) {
 	
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	assertNoRelocs(t, dstpath)
+}
+
+
+func TestPatchDepConflict(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.D("gloo", 
+						tg.F("bloo", tg.B(99, 8192), tg.B(100, 10000)), 
+						tg.D("groo", 
+							tg.D("snoo", 
+								tg.F("bar", tg.B(42, 65537))))))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+					tg.F("gloo", tg.B(99, 10000)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+//	printPlan(patchPlan)
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	assertNoRelocs(t, dstpath)
 }
 
 
