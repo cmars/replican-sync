@@ -9,12 +9,15 @@ import (
 	"container/vector"
 )
 
+// Block size used for checksum, comparison, transmitting deltas.
 const BLOCKSIZE int = 8192
 
-// Nodes are any member of a hierarchical index.
+// Nodes are any member of a hierarchical tree model representing 
+// a part of the filesystem. Nodes include files and directories,
+// and also blocks within the files.
 type Node interface {
 	
-	// Test if this node is at the root of the index.
+	// Test if this node is at the root of the tree.
 	IsRoot() bool
 	
 	// Get the strong checksum of a node.
@@ -25,17 +28,19 @@ type Node interface {
 	
 }
 
-// FsNodes are members of a hierarchical index that correlate to the filesystem.
+// FsNodes are members of a hierarchical index that map directly onto the filesystem:
+// files and directories.
 type FsNode interface {
 	
 	// FsNode extends the concept of Node.
 	Node
 	
-	// FsNodes all have names.
+	// All FsNodes have names (file or directory name).
 	Name() string
 	
 }
 
+// Given a filesystem node, calculate the relative path string to it from the root node.
 func RelPath(item FsNode) string {
 	parts := vector.StringVector{}
 	
@@ -46,7 +51,8 @@ func RelPath(item FsNode) string {
 	return filepath.Join(parts...)
 }
 
-// Represent a block in a hierarchical index.
+// Represent a block in a hierarchical tree model.
+// Blocks are BLOCKSIZE chunks of data which comprise files.
 type Block struct {
 	position int
 	weak int
@@ -57,22 +63,21 @@ type Block struct {
 // Get the weak checksum of a block.
 func (block *Block) Weak() int { return block.weak }
 
-// Get the position of the block in its containing file
+// Get the ordinal position of the block in its containing file.
+// For example, the block beginning at byte offset BLOCKSIZE*2 would be position 2.
 func (block *Block) Position() int { return block.position }
 
+// Get the byte offset of this block in its containing file.
 func (block *Block) Offset() int64 { return int64(block.position) * int64(BLOCKSIZE) }
 
+// Blocks are never root nodes.
 func (block *Block) IsRoot() (bool) { return false }
 
 func (block *Block) Strong() (string) { return block.strong }
 
 func (block *Block) Parent() (FsNode) { return block.parent }
 
-func (block *Block) Child(i int) (Node) { return nil }
-
-func (block *Block) ChildCount() (int) { return 0 }
-
-// Represent a file in a hierarchical index.
+// Represent a file in a hierarchical tree model.
 type File struct {
 	name string
 	strong string
@@ -84,13 +89,14 @@ type File struct {
 
 func (file *File) Name() (string) { return file.name }
 
+// For our purposes, files are never considered root nodes.
 func (file *File) IsRoot() (bool) { return false }
 
 func (file *File) Strong() (string) { return file.strong }
 
 func (file *File) Parent() (FsNode) { return file.parent }
 
-// Represent a directory in a hierarchical index.
+// Represent a directory in a hierarchical tree model.
 type Dir struct {
 	name string
 	strong string
@@ -104,6 +110,9 @@ func (dir *Dir) Name() (string) { return dir.name }
 
 func (dir *Dir) IsRoot() (bool) { return dir.parent == nil }
 
+// Get the directory's strong checksum, based on its deep contents.
+// This is calculated in a similar manner to the way git checksums directories.
+// Because it is expensive, the value is cached on first access.
 func (dir *Dir) Strong() (string) {
 	if dir.strong == "" {
 		dir.strong = dir.calcStrong()
@@ -111,6 +120,7 @@ func (dir *Dir) Strong() (string) {
 	return dir.strong
 }
 
+// Calculate the strong checksum of a directory.
 func (dir *Dir) calcStrong() string {
 	var sha1 = sha1.New()
 	sha1.Write(dir.stringBytes())
@@ -119,6 +129,8 @@ func (dir *Dir) calcStrong() string {
 
 func (dir *Dir) Parent() (FsNode) { return dir.parent }
 
+// Represent the directory's distinct deep contents as a byte array.
+// Inspired by skimming over git internals.
 func (dir *Dir) stringBytes() []byte {
 	buf := bytes.NewBufferString("")
 	
@@ -137,10 +149,10 @@ func (dir *Dir) String() string	{
 	return string(dir.stringBytes())
 }
 
-// Visitor function that is used to traverse a hierarchical Node index.
+// Visitor function to traverse a hierarchical tree model.
 type NodeVisitor func(Node) bool
 
-// Traverse a hierarchical Node index with user-defined NodeVisitor function.
+// Traverse the hierarchical tree model with a user-defined NodeVisitor function.
 func Walk(node Node, visitor NodeVisitor) {
 	nodestack := []Node{}
 	nodestack = append(nodestack, node)

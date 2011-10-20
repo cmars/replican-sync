@@ -584,5 +584,47 @@ func TestPatchDepConflict(t *testing.T) {
 	assertNoRelocs(t, dstpath)
 }
 
+func TestPatchWeakCollision(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.F("bar", tg.B(6806, 65536)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := blocks.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+					tg.F("bar", tg.B(9869, 65536)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := blocks.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	// Src and dst blocks have same weak checksum
+	assert.Equal(t,
+		srcStore.Root().SubDirs[0].Files[0].Blocks[0].Weak(),
+		dstStore.Root().SubDirs[0].Files[0].Blocks[0].Weak())
+	
+	// Src and dst blocks have different strong checksum
+	assert.Tf(t, srcStore.Root().Strong() != dstStore.Root().Strong(),
+		"wtf: %v == %v", srcStore.Root().Strong(), dstStore.Root().Strong())
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+//	printPlan(patchPlan)
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	srcDir, err := blocks.IndexDir(srcpath)
+	assert.T(t, err == nil)
+	dstDir, err := blocks.IndexDir(dstpath)
+	assert.T(t, err == nil)
+	
+	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+}
+
 
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Store a weak checksum as described in the rsync algorithm paper
+// Represent a weak checksum as described in the rsync algorithm paper
 type WeakChecksum struct {
 	a int
 	b int
@@ -98,7 +98,7 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 	}
 }
 
-// Build a hierarchical index of a directory
+// Build a hierarchical tree model representing a directory's contents
 func IndexDir(path string) (dir *Dir, err os.Error) {
 	visitor := newVisitor(path)
 	filepath.Walk(path, visitor, nil)
@@ -109,7 +109,7 @@ func IndexDir(path string) (dir *Dir, err os.Error) {
 	return nil, nil
 }
 
-// Build a hierarchical index of a file
+// Build a hierarchical tree model representing a file's contents
 func IndexFile(path string) (file *File, err os.Error) {
 	var f *os.File
 	var buf [BLOCKSIZE]byte
@@ -164,20 +164,20 @@ func IndexFile(path string) (file *File, err os.Error) {
 	return nil, nil
 }
 
-// Render a Hash as a hexadecimal string
+// Render a Hash as a hexadecimal string.
 func toHexString(hash hash.Hash) string {
 	return fmt.Sprintf("%x", hash.Sum())
 }
 
 // Strong checksum algorithm used throughout replican
-// For now, it's SHA-1
+// For now, it's SHA-1.
 func StrongChecksum(buf []byte) string {
 	var sha1 = sha1.New()
 	sha1.Write(buf)
 	return toHexString(sha1)
 }
 
-// Index a block of data with weak and strong checksums
+// Model a block with weak and strong checksums.
 func IndexBlock(buf []byte) (block *Block) {
 	block = new(Block)
 	
@@ -198,18 +198,15 @@ type BlockIndex struct {
 	strongDirs map[string]*Dir
 }
 
+// Get the Block with matching weak checksum.
+// Boolean return value indicates if a match was found.
 func (index *BlockIndex) WeakBlock(weak int) (block *Block, has bool) {
 	block, has = index.weakBlocks[weak]
 	return block, has
 }
 
-func (index *BlockIndex) StrongNode(strong string) (Node, bool) {
-	block, has := index.strongBlocks[strong]
-	if has { return block, true }
-	
-	return index.StrongFsNode(strong)
-}
-
+// Get the filesystem node with matching strong checksum.
+// Boolean return value indicates if a match was found.
 func (index *BlockIndex) StrongFsNode(strong string) (FsNode, bool) {
 	file, has := index.strongFiles[strong]
 	if has { return file, true }
@@ -220,22 +217,29 @@ func (index *BlockIndex) StrongFsNode(strong string) (FsNode, bool) {
 	return nil, false
 }
 
+// Get the block with matching strong checksum.
+// Boolean return value indicates if a match was found.
 func (index *BlockIndex) StrongBlock(strong string) (block *Block, has bool) {
 	block, has = index.strongBlocks[strong]
 	return block, has
 }
 
+// Get the file with matching strong checksum.
+// Boolean return value indicates if a match was found.
 func (index *BlockIndex) StrongFile(strong string) (file *File, has bool) {
 	file, has = index.strongFiles[strong]
 	return file, has
 }
 
+// Get the directory with matching strong checksum.
+// Boolean return value indicates if a match was found.
 func (index *BlockIndex) StrongDir(strong string) (dir *Dir, has bool) {
 	dir, has = index.strongDirs[strong]
 	return dir, has
 }
 
 // Derive a flattened BlockIndex from a top-level Node.
+// This index maps checksums to the corresponding hierarchical model.
 func IndexBlocks(node Node) (index *BlockIndex) {
 	index = new(BlockIndex)
 	index.weakBlocks = make(map[int]*Block)
