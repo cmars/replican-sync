@@ -127,7 +127,7 @@ func TestStoreRelPath(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	relFoo := store.RelPath(filepath.Join(path, "foo"))
-	assert.Equalf(t, "foo", relFoo, "%v: not a foo", relFoo)
+	assert.Equalf(t, "foo", relFoo, "'%v': not a foo", relFoo)
 	
 	// Relocate bar
 	newBar, err := store.Relocate(filepath.Join(filepath.Join(path, "foo"), "bar"))

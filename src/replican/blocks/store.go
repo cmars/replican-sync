@@ -55,7 +55,7 @@ func (store *LocalStore) reindex() (err os.Error) {
 }
 
 func (store *LocalStore) RelPath(fullpath string) (relpath string) {
-	relpath = strings.TrimLeft(fullpath, store.rootPath)
+	relpath = strings.Replace(fullpath, store.rootPath, "", 1)
 	relpath = strings.TrimLeft(relpath, "/\\")
 	return relpath
 }
