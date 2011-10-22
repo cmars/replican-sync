@@ -1,5 +1,5 @@
 
-package blocks
+package fs
 
 import (
 	"bytes"

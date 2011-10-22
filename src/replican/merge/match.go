@@ -4,11 +4,11 @@ package merge
 import (
 	"fmt"
 	"os"
-	"replican/blocks"
+	"replican/fs"
 )
 
 type BlockMatch struct {
-	SrcBlock *blocks.Block
+	SrcBlock *fs.Block
 	DstOffset int64
 }
 
@@ -28,8 +28,8 @@ func (r *RangePair) Size() int64 {
 }
 
 func Match(src string, dst string) (match *FileMatch, err os.Error) {
-	var srcFile *blocks.File
-	srcFile, err = blocks.IndexFile(src)
+	var srcFile *fs.File
+	srcFile, err = fs.IndexFile(src)
 	if srcFile == nil {
 		return nil, err
 	}
@@ -38,8 +38,8 @@ func Match(src string, dst string) (match *FileMatch, err os.Error) {
 	return match, err
 }
 
-func MatchFile(srcFile *blocks.File, dst string) (match *FileMatch, err os.Error) {
-	srcBlockIndex := blocks.IndexBlocks(srcFile)
+func MatchFile(srcFile *fs.File, dst string) (match *FileMatch, err os.Error) {
+	srcBlockIndex := fs.IndexBlocks(srcFile)
 	
 	match, err = MatchIndex(srcBlockIndex, dst)
 	if match != nil {
@@ -49,7 +49,7 @@ func MatchFile(srcFile *blocks.File, dst string) (match *FileMatch, err os.Error
 	return match, err
 }
 
-func MatchIndex(srcBlockIndex *blocks.BlockIndex, dst string) (match *FileMatch, err os.Error) {
+func MatchIndex(srcBlockIndex *fs.BlockIndex, dst string) (match *FileMatch, err os.Error) {
 	match = new(FileMatch)
 	var dstOffset int64
 	
@@ -67,8 +67,8 @@ func MatchIndex(srcBlockIndex *blocks.BlockIndex, dst string) (match *FileMatch,
 		match.DstSize = dstInfo.Size
 	}
 	
-	dstWeak := new(blocks.WeakChecksum)
-	var buf [blocks.BLOCKSIZE]byte
+	dstWeak := new(fs.WeakChecksum)
+	var buf [fs.BLOCKSIZE]byte
 	var sbuf [1]byte
 	var window []byte
 	
@@ -97,7 +97,7 @@ SCAN:
 				if matchBlock, has := srcBlockIndex.WeakBlock(dstWeak.Get()); has {
 					
 					// Double-check with the strong checksum
-					if blocks.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
+					if fs.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
 					
 						// We've got a block match in dest
 						match.BlockMatches = append(match.BlockMatches, &BlockMatch{
@@ -140,7 +140,7 @@ func (match *FileMatch) NotMatched() (ranges []*RangePair) {
 		if start < blockMatch.DstOffset {
 			ranges = append(ranges, &RangePair{From:start, To:blockMatch.DstOffset})
 		}
-		start = blockMatch.DstOffset + int64(blocks.BLOCKSIZE)
+		start = blockMatch.DstOffset + int64(fs.BLOCKSIZE)
 	}
 	
 	if start < match.SrcSize {

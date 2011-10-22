@@ -1,5 +1,5 @@
 
-package blocks
+package fs
 
 import (
 	"bytes"
@@ -74,7 +74,7 @@ func (store *LocalStore) Relocate(fullpath string) (relocFullpath string, err os
 	err = os.Remove(relocFh.Name())
 	if err != nil { return "", err }
 	
-	err = os.Rename(fullpath, relocFullpath)
+	err = Move(fullpath, relocFullpath)
 	if err != nil { return "", err }
 	
 	relpath := store.RelPath(fullpath)

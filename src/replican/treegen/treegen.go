@@ -1,7 +1,7 @@
 
 /*
 
-Let's invent a mini internal DSL for generating test data. It will look like:
+Let's invent a mini DSL for generating test data. It will look like:
 
 D("",
 	D("",
