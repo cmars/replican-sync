@@ -2,6 +2,7 @@
 package merge
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -416,6 +417,14 @@ func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 	}
 	
 	return nil, nil
+}
+
+func (plan *PatchPlan) String() string {
+	buf := &bytes.Buffer{}
+	for _, cmd := range plan.Cmds {
+		fmt.Fprintf(buf, "%v\n", cmd)
+	}
+	return string(buf.Bytes())
 }
 
 func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error {
