@@ -626,5 +626,74 @@ func TestPatchWeakCollision(t *testing.T) {
 	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
 }
 
+func TestPatchRenameScope(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.F("bar", tg.B(6806, 65536)),
+					tg.F("baz", tg.B(6806, 65536)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := fs.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+					tg.F("baz", tg.B(6806, 65536)),
+					tg.F("blop", tg.B(6806, 65536)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := fs.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	printPlan(patchPlan)
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	srcDir, err := fs.IndexDir(srcpath)
+	assert.T(t, err == nil)
+	dstDir, err := fs.IndexDir(dstpath)
+	assert.T(t, err == nil)
+	
+	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+}
+
+func TestPatchPreserveKeeps(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+					tg.F("bar", tg.B(6806, 65536)),
+					tg.F("blop", tg.B(6806, 65536)))
+	
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := fs.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+					tg.F("baz", tg.B(6806, 65536)),
+					tg.F("blop", tg.B(6806, 65536)))
+	
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := fs.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	printPlan(patchPlan)
+	
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
+	
+	srcDir, err := fs.IndexDir(srcpath)
+	assert.T(t, err == nil)
+	dstDir, err := fs.IndexDir(dstpath)
+	assert.T(t, err == nil)
+	
+	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+}
 
 

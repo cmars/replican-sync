@@ -307,8 +307,6 @@ func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
 }
 
 type PatchPlan struct {
-	SrcRoot *fs.Dir
-	DstRoot *fs.Dir
 	Cmds []PatchCmd
 	
 	srcStore fs.BlockStore
@@ -316,9 +314,7 @@ type PatchPlan struct {
 }
 
 func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
-	plan := &PatchPlan{SrcRoot: srcStore.Root(), DstRoot: dstStore.Root()}
-	plan.srcStore = srcStore
-	plan.dstStore = dstStore
+	plan := &PatchPlan{srcStore: srcStore, dstStore: dstStore}
 	
 	// Find all the FsNode matches
 	fs.Walk(srcStore.Root(), func(srcNode fs.Node) bool {
