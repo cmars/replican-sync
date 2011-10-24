@@ -206,7 +206,6 @@ func TestDirDescent(t *testing.T) {
 		tg.F("baobab", tg.B(91, 65537)),
 		tg.D("bar", 
 			tg.D("aleph", 
-				tg.F("A", tg.B(42, 65537)),
 				tg.F("a", tg.B(42, 65537)))),
 		tg.F("bar3003", tg.B(777, 65537)))
 	
@@ -218,7 +217,7 @@ func TestDirDescent(t *testing.T) {
 	
 	for _, fpath := range []string{ "foo/baobab", "foo/bar/aleph/a", "foo/bar3003" } {
 		node, found := dir.Resolve(fpath)
-		assert.T(t, found)
+		assert.Tf(t, found, "not found: %s", fpath)
 		_, isFile := node.(*File)
 		assert.T(t, isFile)
 	}
