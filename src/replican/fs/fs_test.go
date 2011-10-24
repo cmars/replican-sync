@@ -2,7 +2,7 @@
 package fs
 
 import (
-	"fmt"
+//	"fmt"
 	"os"
 	"path/filepath"
 	"replican/treegen"
@@ -173,15 +173,31 @@ func TestDirResolve(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 	
-	dir, err := IndexDir(path)
+	foo, err := IndexDir(filepath.Join(path, "foo"))
 	assert.Tf(t, err == nil, "%v", err)
 	
 	var node FsNode
 	var found bool
 	
-	node, found = dir.Resolve("foo/bar/aleph/A")
+	bar, exists := foo.Item("bar")
+	assert.T(t, exists)
+	barDir, isDir := bar.(*Dir)
+	assert.T(t, isDir, "barDir = %v", barDir)
+	
+	node, found = foo.Resolve("bar")
 	assert.T(t, found)
-	fmt.Printf("%v\n", node)
+	_, isDir = node.(*Dir)
+	assert.T(t, isDir)
+	
+	node, found = foo.Resolve("bar/aleph")
+	assert.T(t, found)
+	_, isDir = node.(*Dir)
+	assert.T(t, isDir)
+	
+	node, found = foo.Resolve("bar/aleph/A")
+	assert.T(t, found)
+	_, isFile := node.(*File)
+	assert.T(t, isFile)
 }
 
 

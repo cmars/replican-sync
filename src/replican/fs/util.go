@@ -4,8 +4,16 @@ package fs
 import (
 	"io"
 	"os"
+	"strings"
 	"syscall"
 )
+
+func SplitNames(path string) []string {
+	if path == "" {
+		return []string{}
+	}
+	return strings.Split(path, string(os.PathSeparator))
+}
 
 // Move src to dst.
 // Try a rename. If that fails due to different filesystems,

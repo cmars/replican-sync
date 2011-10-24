@@ -125,21 +125,40 @@ func mkParentDirs(path PathRef) (os.Error) {
 }
 
 // Copy a local file.
-type LocalCopy struct {
+type Transfer struct {
 	From *LocalPath
 	To *LocalPath
+	
+	relocRefs map[string]int
 }
 
-func (localCopy *LocalCopy) String() string {
-	return fmt.Sprintf("Copy %s to %s", localCopy.From, localCopy.To)
+func (transfer *Transfer) String() string {
+	return fmt.Sprintf("Transfer %s to %s", transfer.From, transfer.To)
 }
 
-func (localCopy *LocalCopy) Exec(srcStore fs.BlockStore) os.Error {
-	srcF, err := os.Open(localCopy.From.Resolve())
+func (transfer *Transfer) Exec(srcStore fs.BlockStore) (err os.Error) {
+	transfer.relocRefs[transfer.From.RelPath]--
+	refCount := transfer.relocRefs[transfer.From.RelPath]
+	
+	switch {
+	case refCount == 0:
+		return transfer.move(srcStore)
+	case refCount > 0:
+		return transfer.copy(srcStore)
+	}
+	
+	return os.NewError(fmt.Sprintf(
+		"Cannot transfer %s: reference count underflow", transfer.From.RelPath))
+}
+
+func (transfer *Transfer) copy(srcStore fs.BlockStore) os.Error {
+	if err := mkParentDirs(transfer.To); err != nil { return err }
+	
+	srcF, err := os.Open(transfer.From.Resolve())
 	if err != nil { return err }
 	defer srcF.Close()
 	
-	dstF, err := os.Create(localCopy.To.Resolve())
+	dstF, err := os.Create(transfer.To.Resolve())
 	if err != nil { return err }
 	defer dstF.Close()
 	
@@ -147,20 +166,10 @@ func (localCopy *LocalCopy) Exec(srcStore fs.BlockStore) os.Error {
 	return err
 }
 
-// Rename a file.
-type Rename struct {
-	From PathRef
-	To PathRef
-}
-
-func (rename *Rename) String() string {
-	return fmt.Sprintf("Rename %s to %s", rename.From, rename.To)
-}
-
-func (rename *Rename) Exec(srcStore fs.BlockStore) os.Error {
-	if err := mkParentDirs(rename.To); err != nil { return err }
+func (transfer *Transfer) move(srcStore fs.BlockStore) os.Error {
+	if err := mkParentDirs(transfer.To); err != nil { return err }
 	
-	return fs.Move(rename.From.Resolve(), rename.To.Resolve())
+	return fs.Move(transfer.From.Resolve(), transfer.To.Resolve())
 }
 
 // Keep a file. Yeah, that's right. Just leave it alone.
@@ -339,6 +348,8 @@ type PatchPlan struct {
 func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 	plan := &PatchPlan{srcStore: srcStore, dstStore: dstStore}
 	
+	relocRefs := make(map[string]int)
+	
 	// Find all the FsNode matches
 	fs.Walk(srcStore.Root(), func(srcNode fs.Node) bool {
 		
@@ -367,20 +378,16 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 		// Resolve dst node that matches strong checksum with source
 		if hasDstNode && isSrcFile == isDstFile {
 			dstPath := fs.RelPath(dstNode)
+			relocRefs[dstPath]++ // dstPath will be used in this cmd, inc ref count
 			
 			if srcPath != dstPath {
+				// Local dst file needs to be renamed or copied to src path
 				from := &LocalPath{ LocalStore: dstStore, RelPath: dstPath }
 				to := &LocalPath{ LocalStore: dstStore, RelPath: srcPath }
-				
-				if _, hasPath := srcStore.Root().Resolve(dstPath); hasPath {
-					// Different destination path, but that other path is also in the source
-					plan.Cmds = append(plan.Cmds, &LocalCopy{ From: from, To: to })
-				} else {
-					// Different destination path, safe to rename
-					plan.Cmds = append(plan.Cmds, &Rename{ From: from, To: to })
-				}
+				plan.Cmds = append(plan.Cmds, 
+					&Transfer{ From: from, To: to, relocRefs: relocRefs })
 			} else {
-				// Same path, so keep it
+				// Same path, keep it where it is
 				plan.Cmds = append(plan.Cmds, &Keep{
 					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
 			}

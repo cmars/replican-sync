@@ -150,20 +150,30 @@ func (dir *Dir) String() string	{
 }
 
 func (dir *Dir) Resolve(relpath string) (fsNode FsNode, hasItem bool) {
-	parts := filepath.SplitList(relpath)
-	fsNode = dir
-	cwd, isDir := dir, true
+	parts := SplitNames(relpath)
+	cwd := dir
+	i := 0
+	l := len(parts)
 	
-	for _, part := range parts {
-		if !isDir { return nil, false }
+	for i = 0; i < l; i++ {
+		fsNode, hasItem = cwd.Item(parts[i])
+		if !hasItem {
+			return nil, false
+		}
 		
-		fsNode, hasItem = cwd.Item(part)
-		if !hasItem { return nil, false }
+		if i == l-1 {
+			return fsNode, true
+		}
 		
-		cwd, isDir = fsNode.(*Dir)
+		switch t := fsNode.(type) {
+		case *Dir:
+			cwd = fsNode.(*Dir)
+		default:
+			return nil, false
+		}
 	}
 	
-	return fsNode, true
+	return nil, false
 }
 
 func (dir *Dir) Item(name string) (FsNode, bool) {

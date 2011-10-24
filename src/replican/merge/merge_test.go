@@ -384,7 +384,7 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	
 	assert.Equal(t, 1, len(patchPlan.Cmds))
-	rename, isRename := patchPlan.Cmds[0].(*Rename)
+	rename, isRename := patchPlan.Cmds[0].(*Transfer)
 	assert.T(t, isRename)
 	assert.T(t, strings.HasSuffix(rename.From.Resolve(), filepath.Join("foo", "baz")))
 	assert.T(t, strings.HasSuffix(rename.To.Resolve(), filepath.Join("foo", "bar")))
@@ -419,7 +419,7 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	assert.Equal(t, 2, len(patchPlan.Cmds))
 	for i := 0; i < len(patchPlan.Cmds); i++ {
-		_, isRename := patchPlan.Cmds[0].(*Rename)
+		_, isRename := patchPlan.Cmds[0].(*Transfer)
 		assert.T(t, isRename)
 	}
 	
@@ -427,7 +427,7 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 	patchPlan = NewPatchPlan(dstStore, srcStore)
 	assert.Equal(t, 2, len(patchPlan.Cmds))
 	for i := 0; i < len(patchPlan.Cmds); i++ {
-		_, isRename := patchPlan.Cmds[0].(*Rename)
+		_, isRename := patchPlan.Cmds[0].(*Transfer)
 		assert.T(t, isRename)
 	}
 }
@@ -534,10 +534,10 @@ func TestPatchRelocConflict(t *testing.T) {
 			assert.T(t, is)
 			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, "foo/gloo"))
 		case 1:
-			rename, is := cmd.(*Rename)
+			copy, is := cmd.(*Transfer)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(rename.From.Resolve(), "foo/gloo"))
-			assert.T(t, strings.HasSuffix(rename.To.Resolve(), "foo/gloo/bloo"))
+			assert.T(t, strings.HasSuffix(copy.From.Resolve(), "foo/gloo"))
+			assert.T(t, strings.HasSuffix(copy.To.Resolve(), "foo/gloo/bloo"))
 		case 2:
 			copy, is := cmd.(*SrcFileDownload)
 			assert.T(t, is)
@@ -683,17 +683,17 @@ func TestPatchPreserveKeeps(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	printPlan(patchPlan)
+//	printPlan(patchPlan)
 	
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 	
-	srcDir, err := fs.IndexDir(srcpath)
-	assert.T(t, err == nil)
-	dstDir, err := fs.IndexDir(dstpath)
-	assert.T(t, err == nil)
+	info, err := os.Stat(filepath.Join(dstpath, "foo", "bar"))
+	assert.T(t, err == nil && info != nil)
 	
-	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+	info, err = os.Stat(filepath.Join(dstpath, "foo", "blop"))
+	assert.T(t, err == nil && info != nil)
 }
+
 
 
