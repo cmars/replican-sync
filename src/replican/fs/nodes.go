@@ -149,6 +149,39 @@ func (dir *Dir) String() string	{
 	return string(dir.stringBytes())
 }
 
+func (dir *Dir) Resolve(relpath string) (fsNode FsNode, hasItem bool) {
+	parts := filepath.SplitList(relpath)
+	fsNode = dir
+	cwd, isDir := dir, true
+	
+	for _, part := range parts {
+		if !isDir { return nil, false }
+		
+		fsNode, hasItem = cwd.Item(part)
+		if !hasItem { return nil, false }
+		
+		cwd, isDir = fsNode.(*Dir)
+	}
+	
+	return fsNode, true
+}
+
+func (dir *Dir) Item(name string) (FsNode, bool) {
+	for _, subdir := range dir.SubDirs {
+		if subdir.Name() == name {
+			return subdir, true
+		}
+	}
+	
+	for _, file := range dir.Files {
+		if file.Name() == name {
+			return file, true
+		}
+	}
+	
+	return nil, false
+}
+
 // Visitor function to traverse a hierarchical tree model.
 type NodeVisitor func(Node) bool
 

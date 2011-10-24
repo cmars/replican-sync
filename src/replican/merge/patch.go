@@ -124,6 +124,29 @@ func mkParentDirs(path PathRef) (os.Error) {
 	return nil
 }
 
+// Copy a local file.
+type LocalCopy struct {
+	From *LocalPath
+	To *LocalPath
+}
+
+func (localCopy *LocalCopy) String() string {
+	return fmt.Sprintf("Copy %s to %s", localCopy.From, localCopy.To)
+}
+
+func (localCopy *LocalCopy) Exec(srcStore fs.BlockStore) os.Error {
+	srcF, err := os.Open(localCopy.From.Resolve())
+	if err != nil { return err }
+	defer srcF.Close()
+	
+	dstF, err := os.Create(localCopy.To.Resolve())
+	if err != nil { return err }
+	defer dstF.Close()
+	
+	_, err = io.Copy(dstF, srcF)
+	return err
+}
+
 // Rename a file.
 type Rename struct {
 	From PathRef
@@ -346,10 +369,18 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 			dstPath := fs.RelPath(dstNode)
 			
 			if srcPath != dstPath {
-				plan.Cmds = append(plan.Cmds, &Rename{ 
-					From: &LocalPath{ LocalStore: dstStore, RelPath: dstPath },
-					To: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
+				from := &LocalPath{ LocalStore: dstStore, RelPath: dstPath }
+				to := &LocalPath{ LocalStore: dstStore, RelPath: srcPath }
+				
+				if _, hasPath := srcStore.Root().Resolve(dstPath); hasPath {
+					// Different destination path, but that other path is also in the source
+					plan.Cmds = append(plan.Cmds, &LocalCopy{ From: from, To: to })
+				} else {
+					// Different destination path, safe to rename
+					plan.Cmds = append(plan.Cmds, &Rename{ From: from, To: to })
+				}
 			} else {
+				// Same path, so keep it
 				plan.Cmds = append(plan.Cmds, &Keep{
 					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
 			}
