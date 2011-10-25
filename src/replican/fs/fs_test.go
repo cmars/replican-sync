@@ -200,5 +200,34 @@ func TestDirResolve(t *testing.T) {
 	assert.T(t, isFile)
 }
 
+func TestDirDescent(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+		tg.F("baobab", tg.B(91, 65537)),
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537)))),
+		tg.F("bar3003", tg.B(777, 65537)))
+	
+	path := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(path)
+	
+	dir, err := IndexDir(path)
+	assert.T(t, err == nil)
+	
+	for _, fpath := range []string{ "foo/baobab", "foo/bar/aleph/a", "foo/bar3003" } {
+		node, found := dir.Resolve(fpath)
+		assert.T(t, found)
+		_, isFile := node.(*File)
+		assert.T(t, isFile)
+	}
+	
+	node, found := dir.Resolve("foo/bar")
+	assert.T(t, found)
+	_, isDir := node.(*Dir)
+	assert.T(t, isDir)
+}
+
 
 

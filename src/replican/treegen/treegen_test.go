@@ -14,6 +14,7 @@ func TestSimple1(t *testing.T) {
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	
 	tempdir := TestTree(t, treeSpec)
+	defer os.RemoveAll(tempdir)
 	
 	fileInfo, _ := os.Stat(filepath.Join(tempdir, "foo"))
 	assert.Tf(t, fileInfo.IsDirectory(), "no foo")
