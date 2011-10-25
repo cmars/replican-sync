@@ -45,7 +45,6 @@ func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
 // Visitor used to traverse a directory with filepath.Walk in IndexDir
 type indexVisitor struct {
 	root *Dir
-	currentDir *Dir
 	dirMap map[string]*Dir
 }
 
@@ -57,7 +56,6 @@ func newVisitor(path string) *indexVisitor {
 	visitor := new(indexVisitor)
 	visitor.dirMap = make(map[string]*Dir)
 	visitor.root = new(Dir)
-	visitor.currentDir = visitor.root
 	visitor.dirMap[path] = visitor.root
 	
 	return visitor
@@ -66,7 +64,6 @@ func newVisitor(path string) *indexVisitor {
 // IndexDir visitor callback for directories
 func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 	path = filepath.Clean(path)
-	
 	dir, hasDir := visitor.dirMap[path]
 	if !hasDir {
 		dir = new(Dir)
@@ -82,8 +79,7 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 			dir.parent.SubDirs = append(dir.parent.SubDirs, dir)
 		}
 	}
-		
-	visitor.currentDir = dir;
+	
 	return true
 }
 
@@ -91,11 +87,20 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 	file, err := IndexFile(path)
 	if file != nil {
-		file.parent = visitor.currentDir
-		visitor.currentDir.Files = append(visitor.currentDir.Files, file)
-	} else {
-		fmt.Errorf("failed to read file %s: %s", path, err.String())
+		dirpath, _ := filepath.Split(path)
+		dirpath = filepath.Clean(dirpath)
+		dirinfo, _ := os.Stat(dirpath)
+		visitor.VisitDir(dirpath, dirinfo)
+		
+		var hasParent bool
+		if file.parent, hasParent = visitor.dirMap[dirpath]; hasParent {
+			file.parent.Files = append(file.parent.Files, file)
+			return
+		} else {
+			err = os.NewError("cannot locate parent directory")
+		}
 	}
+	fmt.Errorf("failed to read file %s: %s", path, err.String())
 }
 
 // Build a hierarchical tree model representing a directory's contents

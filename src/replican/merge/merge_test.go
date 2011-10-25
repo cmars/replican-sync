@@ -648,7 +648,7 @@ func TestPatchRenameScope(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	printPlan(patchPlan)
+//	printPlan(patchPlan)
 	
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
