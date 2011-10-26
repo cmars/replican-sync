@@ -1,5 +1,5 @@
 
-package merge
+package sync
 
 import (
 	"fmt"

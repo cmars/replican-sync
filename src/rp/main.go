@@ -3,7 +3,7 @@ package main
 
 import (
 	"replican/fs"
-	"replican/merge"
+	"replican/sync"
 	"os"
 	"fmt"
 	
@@ -34,7 +34,7 @@ func main() {
 	dstStore, err := fs.NewLocalStore(dstpath)
 	if err != nil { die(fmt.Sprintf("Failed to read destination %s", srcpath), err) }
 	
-	patchPlan := merge.NewPatchPlan(srcStore, dstStore)
+	patchPlan := sync.NewPatchPlan(srcStore, dstStore)
 	
 	if verboseOpt.Value {
 		fmt.Printf("%v\n", patchPlan)
