@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"replican/fs"
+	"github.com/cmars/replican-sync/replican/fs"
 )
 
 func PatchFile(src string, dst string) os.Error {

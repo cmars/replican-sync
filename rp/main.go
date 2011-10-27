@@ -2,8 +2,8 @@
 package main
 
 import (
-	"replican/fs"
-	"replican/sync"
+	"github.com/cmars/replican-sync/replican/fs"
+	"github.com/cmars/replican-sync/replican/sync"
 	"os"
 	"fmt"
 	

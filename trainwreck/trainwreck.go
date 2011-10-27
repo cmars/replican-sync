@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"rand"
-	"replican/fs"
+	"github.com/cmars/replican-sync/replican/fs"
 )
 
 /*

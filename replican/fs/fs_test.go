@@ -5,7 +5,7 @@ import (
 //	"fmt"
 	"os"
 	"path/filepath"
-	"replican/treegen"
+	"github.com/cmars/replican-sync/replican/treegen"
 	"strings"
 	"testing"
 	

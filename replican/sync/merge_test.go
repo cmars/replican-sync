@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"replican/fs"
-	"replican/treegen"
+	"github.com/cmars/replican-sync/replican/fs"
+	"github.com/cmars/replican-sync/replican/treegen"
 	"strings"
 	"testing"
 	

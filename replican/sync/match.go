@@ -4,7 +4,7 @@ package sync
 import (
 	"fmt"
 	"os"
-	"replican/fs"
+	"github.com/cmars/replican-sync/replican/fs"
 )
 
 type BlockMatch struct {

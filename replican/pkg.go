@@ -2,7 +2,7 @@
 package replican
 
 import (
-	_ "replican/fs"
-	_ "replican/sync"
+	_ "github.com/cmars/replican-sync/replican/fs"
+	_ "github.com/cmars/replican-sync/replican/sync"
 )
 
