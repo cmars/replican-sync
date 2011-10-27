@@ -1,9 +1,10 @@
 
-# replican-sync - An rsync algorithm implementation in Go #
+# replican-sync - Filesystem synchronization for Go #
 
 ## Features ##
 
-replican-sync currently supports local file & directory synchronization with the [rsync algorithm](http://rsync.samba.org/tech_report/).
+replican-sync provides local file & directory synchronization with an implementation of the [rsync algorithm](http://rsync.samba.org/tech_report/). 
+It is not compatible with the wire protocols and indexing used in the [rsync(1)](http://www.samba.org/ftp/rsync/rsync.html) utility.
 
 ### Implemented ###
 
@@ -23,7 +24,7 @@ replican-sync currently supports local file & directory synchronization with the
 
 	goinstall github.com/cmars/replican-sync/replican/sync
 
-See rp.go, fs_test.go and merge_test.go for examples.
+See rp.go, fs\_test.go and merge\_test.go for examples.
 
 ## Why?
 
