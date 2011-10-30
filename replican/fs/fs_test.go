@@ -2,7 +2,8 @@
 package fs
 
 import (
-//	"fmt"
+	"bytes"
+	"gob"
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/treegen"
@@ -228,5 +229,55 @@ func TestDirDescent(t *testing.T) {
 	assert.T(t, isDir)
 }
 
-
+func TestGobbable(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537))),
+			tg.D("beth", 
+				tg.F("B", tg.B(43, 65537)),
+				tg.F("b", tg.B(43, 65537))),
+			tg.D("jimmy",
+				tg.F("G", tg.B(44, 65537)),
+				tg.F("g", tg.B(44, 65537)))),
+		tg.D("baz", 
+			tg.D("uno", 
+				tg.F("1", tg.B(1, 65537)),
+				tg.F("I", tg.B(1, 65537))),
+			tg.D("dos", 
+				tg.F("2", tg.B(11, 65537)),
+				tg.F("II", tg.B(11, 65537))),
+			tg.D("tres", 
+				tg.F("3", tg.B(111, 65537)),
+				tg.F("III", tg.B(111, 65537)))))
+	
+	path := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(path)
+	
+	foo, err := IndexDir(filepath.Join(path, "foo"))
+	assert.Tf(t, err == nil, "%v", err)
+	
+	node, found := foo.Resolve("bar/aleph/A")
+	assert.Equal(t, "bar/aleph/A", RelPath(node))
+	
+	bufferEnc := bytes.NewBuffer([]byte{})
+	encoder := gob.NewEncoder(bufferEnc)
+	encoder.Encode(foo)
+	
+	bufferDec := bytes.NewBuffer(bufferEnc.Bytes())
+	decoder := gob.NewDecoder(bufferDec)
+	
+	decFoo := &Dir{}
+	decoder.Decode(decFoo)
+	
+	node, found = decFoo.Resolve("bar/aleph/A")
+	assert.T(t, found)
+	_, isFile := node.(*File)
+	assert.T(t, isFile)
+	
+	assert.T(t, node.Parent() != nil)
+	assert.Equal(t, "bar/aleph/A", RelPath(node))
+}
 
