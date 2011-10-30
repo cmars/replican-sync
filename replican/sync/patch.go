@@ -315,7 +315,8 @@ func (stc *SrcTempCopy) String() string {
 
 func (stc *SrcTempCopy) Exec(srcStore fs.BlockStore) os.Error {
 	stc.Temp.tempFh.Seek(stc.TempOffset, 0)
-	return srcStore.ReadInto(stc.SrcStrong, stc.SrcOffset, stc.Length, stc.Temp.tempFh)
+	_, err := srcStore.ReadInto(stc.SrcStrong, stc.SrcOffset, stc.Length, stc.Temp.tempFh)
+	return err
 }
 
 // Copy a range of data from the source file to the destination file.
@@ -335,7 +336,8 @@ func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
 	dstFh, err := os.Create(sfd.Path.Resolve())
 	if dstFh == nil { return err }
 	
-	return srcStore.ReadInto(sfd.SrcFile.Strong(), 0, sfd.SrcFile.Size, dstFh)
+	_, err = srcStore.ReadInto(sfd.SrcFile.Strong(), 0, sfd.SrcFile.Size, dstFh)
+	return err
 }
 
 type PatchPlan struct {

@@ -23,7 +23,7 @@ type BlockStore interface {
 	ReadBlock(strong string) ([]byte, os.Error)
 	
 	// Given the strong checksum of a file, start and end positions, get those bytes.
-	ReadInto(strong string, from int64, length int64, writer io.Writer) os.Error
+	ReadInto(strong string, from int64, length int64, writer io.Writer) (int64, os.Error)
 	
 }
 
@@ -104,7 +104,7 @@ func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
 	}
 	
 	buf := &bytes.Buffer{}
-	err := store.ReadInto(block.Parent().Strong(), block.Offset(), int64(BLOCKSIZE), buf)
+	_, err := store.ReadInto(block.Parent().Strong(), block.Offset(), int64(BLOCKSIZE), buf)
 	if err == nil {
 		return nil, err
 	}
@@ -112,27 +112,29 @@ func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
 	return buf.Bytes(), nil
 }
 
-func (store *LocalStore) ReadInto(strong string, from int64, length int64, writer io.Writer) os.Error {
+func (store *LocalStore) ReadInto(
+		strong string, from int64, length int64, writer io.Writer) (int64, os.Error) {
 	
 	file, has := store.index.StrongFile(strong)
 	if !has {
-		return os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
+		return 0, 
+			os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
 	}
 	
 	path := store.Resolve(RelPath(file))
 	
 	fh, err := os.Open(path)
-	if fh == nil { return err }
+	if fh == nil { return 0, err }
 	
 	_, err = fh.Seek(from, 0)
-	if err != nil { return err }
+	if err != nil { return 0, err }
 	
-	_, err = io.Copyn(writer, fh, length)
+	n, err := io.Copyn(writer, fh, length)
 	if err != nil {
-		return err
+		return n, err
 	}
 	
-	return nil
+	return n, nil
 }
 
 
