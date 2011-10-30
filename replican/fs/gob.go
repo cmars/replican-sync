@@ -3,96 +3,146 @@ package fs
 
 import (
 	"bytes"
+	"fmt"
 	"gob"
 	"os"
 	"reflect"
 )
 
-func decodeReflect(i interface{}, buf []byte) os.Error {
-	typ := reflect.TypeOf(i)
-	val := reflect.ValueOf(i)
-	if val.IsNil() {
-		return nil
+const gobNodeVersion int = 1
+
+func checkVersion(decoder *gob.Decoder) os.Error {
+	var version int
+	decoder.DecodeValue(reflect.ValueOf(&version))
+	if version != gobNodeVersion {
+		return os.NewError(fmt.Sprintf("Version %d of node gobber cannot decode version %d", 
+			gobNodeVersion, version))
 	}
-	
-	elem := val.Elem()
+	return nil
+}
+
+func (block *Block) GobDecode(buf []byte) (err os.Error) {
 	buffer := bytes.NewBuffer(buf)
 	decoder := gob.NewDecoder(buffer)
 	
-	for i := 0; i < elem.NumField(); i++ {
-		field := elem.Field(i)
-		fieldType := typ.Elem().Field(i)
-		if field.CanAddr() && fieldType.Name != "parent" {
-			if err := decoder.DecodeValue(field.Addr()); err != nil {
-				return err
-			}
-		}
+	err = checkVersion(decoder)
+	if err != nil { return err }
+	
+	err = decoder.DecodeValue(reflect.ValueOf(&block.position))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&block.weak))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&block.strong))
+	if err != nil { return err }
+	
+	return nil
+}
+
+func (file *File) GobDecode(buf []byte) (err os.Error) {
+	buffer := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(buffer)
+	
+	err = checkVersion(decoder)
+	if err != nil { return err }
+	
+	err = decoder.DecodeValue(reflect.ValueOf(&file.name))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&file.strong))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&file.Size))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&file.Blocks))
+	if err != nil { return err }
+	
+	for _, block := range file.Blocks {
+		block.parent = file
 	}
 	
 	return nil
 }
 
-func (block *Block) GobDecode(buf []byte) os.Error {
-	return decodeReflect(block, buf)
-}
-
-func (file *File) GobDecode(buf []byte) os.Error {
-	err := decodeReflect(file, buf)
-	if err == nil {
-		for _, block := range file.Blocks {
-			block.parent = file
-		}
+func (dir *Dir) GobDecode(buf []byte) (err os.Error) {
+	buffer := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(buffer)
+	
+	err = checkVersion(decoder)
+	if err != nil { return err }
+	
+	err = decoder.DecodeValue(reflect.ValueOf(&dir.name))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&dir.strong))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&dir.SubDirs))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&dir.Files))
+	if err != nil { return err }
+	
+	for _, file := range dir.Files {
+		file.parent = dir
 	}
-	return err	
-}
-
-func (dir *Dir) GobDecode(buf []byte) os.Error {
-	err := decodeReflect(dir, buf)
-	if err == nil {
-		for _, file := range dir.Files {
-			file.parent = dir
-		}
-		for _, subdir := range dir.SubDirs {
-			subdir.parent = dir
-		}
-	}
-	return err	
-}
-
-func encodeReflect(i interface{}) ([]byte, os.Error) {
-	typ := reflect.TypeOf(i)
-	val := reflect.ValueOf(i)
-	if val.IsNil() {
-		return make([]byte, 0), nil
+	for _, subdir := range dir.SubDirs {
+		subdir.parent = dir
 	}
 	
-	elem := val.Elem()
+	return nil
+}
+
+func (block *Block) GobEncode() ([]byte, os.Error) {
 	buffer := bytes.NewBuffer([]byte{})
 	encoder := gob.NewEncoder(buffer)
 	
-	for i := 0; i < elem.NumField(); i++ {
-		field := elem.Field(i)
-		fieldType := typ.Elem().Field(i)
-		if fieldType.Name != "parent" {
-			if err := encoder.EncodeValue(field); err != nil {
-				return nil, err
-			}
-		}
-	}
+	var err os.Error
+	err = encoder.EncodeValue(reflect.ValueOf(gobNodeVersion))
+	if err != nil { return nil, err }
+	
+	err = encoder.EncodeValue(reflect.ValueOf(&block.position))
+	if err != nil { return nil, err }
+	encoder.EncodeValue(reflect.ValueOf(&block.weak))
+	if err != nil { return nil, err }
+	encoder.EncodeValue(reflect.ValueOf(&block.strong))
+	if err != nil { return nil, err }
 	
 	return buffer.Bytes(), nil
 }
 
-func (block *Block) GobEncode() ([]byte, os.Error) {
-	return encodeReflect(block)
-}
-
 func (file *File) GobEncode() ([]byte, os.Error) {
-	return encodeReflect(file)
+	buffer := bytes.NewBuffer([]byte{})
+	encoder := gob.NewEncoder(buffer)
+	
+	var err os.Error
+	err = encoder.EncodeValue(reflect.ValueOf(gobNodeVersion))
+	if err != nil { return nil, err }
+	
+	err = encoder.EncodeValue(reflect.ValueOf(&file.name))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&file.strong))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&file.Size))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&file.Blocks))
+	if err != nil { return nil, err }
+	
+	return buffer.Bytes(), nil
 }
 
 func (dir *Dir) GobEncode() ([]byte, os.Error) {
-	return encodeReflect(dir)
+	buffer := bytes.NewBuffer([]byte{})
+	encoder := gob.NewEncoder(buffer)
+	
+	var err os.Error
+	err = encoder.EncodeValue(reflect.ValueOf(gobNodeVersion))
+	if err != nil { return nil, err }
+	
+	err = encoder.EncodeValue(reflect.ValueOf(&dir.name))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&dir.strong))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&dir.SubDirs))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&dir.Files))
+	if err != nil { return nil, err }
+	
+	return buffer.Bytes(), nil
 }
 
 

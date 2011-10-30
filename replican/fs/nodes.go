@@ -54,59 +54,59 @@ func RelPath(item FsNode) string {
 // Represent a block in a hierarchical tree model.
 // Blocks are BLOCKSIZE chunks of data which comprise files.
 type Block struct {
-	BlkPos int
-	WeakCksum int
-	StrongCksum string
+	position int
+	weak int
+	strong string
 	parent *File
 }
 
 // Get the weak checksum of a block.
-func (block *Block) Weak() int { return block.WeakCksum }
+func (block *Block) Weak() int { return block.weak }
 
 // Get the ordinal position of the block in its containing file.
 // For example, the block beginning at byte offset BLOCKSIZE*2 would be position 2.
-func (block *Block) Position() int { return block.BlkPos }
+func (block *Block) Position() int { return block.position }
 
 // Get the byte offset of this block in its containing file.
-func (block *Block) Offset() int64 { return int64(block.BlkPos) * int64(BLOCKSIZE) }
+func (block *Block) Offset() int64 { return int64(block.position) * int64(BLOCKSIZE) }
 
 // Blocks are never root nodes.
 func (block *Block) IsRoot() (bool) { return false }
 
-func (block *Block) Strong() (string) { return block.StrongCksum }
+func (block *Block) Strong() (string) { return block.strong }
 
 func (block *Block) Parent() (FsNode) { return block.parent }
 
 // Represent a file in a hierarchical tree model.
 type File struct {
-	FileName string
-	StrongCksum string
+	name string
+	strong string
 	parent *Dir
 	
 	Size int64
 	Blocks []*Block
 }
 
-func (file *File) Name() (string) { return file.FileName }
+func (file *File) Name() (string) { return file.name }
 
 // For our purposes, files are never considered root nodes.
 func (file *File) IsRoot() (bool) { return false }
 
-func (file *File) Strong() (string) { return file.StrongCksum }
+func (file *File) Strong() (string) { return file.strong }
 
 func (file *File) Parent() (FsNode) { return file.parent }
 
 // Represent a directory in a hierarchical tree model.
 type Dir struct {
-	DirName string
-	StrongCksum string
+	name string
+	strong string
 	parent *Dir
 	
 	SubDirs []*Dir
 	Files []*File
 }
 
-func (dir *Dir) Name() (string) { return dir.DirName }
+func (dir *Dir) Name() (string) { return dir.name }
 
 func (dir *Dir) IsRoot() (bool) { return dir.parent == nil }
 
@@ -114,10 +114,10 @@ func (dir *Dir) IsRoot() (bool) { return dir.parent == nil }
 // This is calculated in a similar manner to the way git checksums directories.
 // Because it is expensive, the value is cached on first access.
 func (dir *Dir) Strong() (string) {
-	if dir.StrongCksum == "" {
-		dir.StrongCksum = dir.calcStrong()
+	if dir.strong == "" {
+		dir.strong = dir.calcStrong()
 	}
-	return dir.StrongCksum
+	return dir.strong
 }
 
 // Calculate the strong checksum of a directory.

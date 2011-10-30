@@ -72,7 +72,7 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 		dirname, basename := filepath.Split(path)
 		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
 		
-		dir.DirName = basename
+		dir.name = basename
 		dir.parent = visitor.dirMap[dirname]
 		
 		if dir.parent != nil {
@@ -133,7 +133,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 	
 	file = new(File)
 	_, basename := filepath.Split(path)
-	file.FileName = basename
+	file.name = basename
 	
 	if fileInfo, err := f.Stat(); fileInfo != nil {
 		file.Size = fileInfo.Size
@@ -150,12 +150,12 @@ func IndexFile(path string) (file *File, err os.Error) {
 		case rd < 0:
 			return nil, err
 		case rd == 0:
-			file.StrongCksum = toHexString(sha1)
+			file.strong = toHexString(sha1)
 			return file, nil
 		case rd > 0:
 			// Update block hashes
 			block = IndexBlock(buf[0:rd])
-			block.BlkPos = blockNum
+			block.position = blockNum
 			file.Blocks = append(file.Blocks, block)
 			
 			// update file hash
@@ -188,9 +188,9 @@ func IndexBlock(buf []byte) (block *Block) {
 	
 	var weak = new(WeakChecksum)
 	weak.Write(buf)
-	block.WeakCksum = weak.Get()
+	block.weak = weak.Get()
 	
-	block.StrongCksum = StrongChecksum(buf)
+	block.strong = StrongChecksum(buf)
 	
 	return block
 }
