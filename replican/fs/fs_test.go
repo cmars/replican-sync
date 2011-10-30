@@ -264,13 +264,15 @@ func TestGobbable(t *testing.T) {
 	
 	bufferEnc := bytes.NewBuffer([]byte{})
 	encoder := gob.NewEncoder(bufferEnc)
-	encoder.Encode(foo)
+	err = encoder.Encode(foo)
+	assert.Tf(t, err == nil, "%v", err)
 	
 	bufferDec := bytes.NewBuffer(bufferEnc.Bytes())
 	decoder := gob.NewDecoder(bufferDec)
 	
 	decFoo := &Dir{}
-	decoder.Decode(decFoo)
+	err = decoder.Decode(decFoo)
+	assert.Tf(t, err == nil, "%v", err)
 	
 	node, found = decFoo.Resolve("bar/aleph/A")
 	assert.T(t, found)
