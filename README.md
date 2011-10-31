@@ -8,14 +8,13 @@ It is not compatible with the wire protocols and indexing used in the [rsync(1)]
 
 ### Implemented ###
 
-* *nix platforms.
+* Linux, OSX, MinGW
 * Hierarchical, [content-addressable](http://en.wikipedia.org/wiki/Content-addressable_storage) filesystem model down to the block level.
 * Match and patch files with rolling checksum and strong cryptographic hash.
 * Match and patch directory structures.
 
 ### Planned/In Development ###
 
-* Directory structure patching on MinGW.
 * Handle symbolic links.
 * Synchronization behavior options (filtering, handling deletes, etc.)
 * Performance benchmarking, tuning, optimization.
