@@ -35,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"rand"
+	"syscall"
 	"testing"
 	
 	"github.com/bmizerany/assert"
@@ -65,6 +66,34 @@ func New() *TreeGen {
 	return &TreeGen{ rand: rand.New(rand.NewSource(42)) }
 }
 
+func isIllegal(c byte) bool {
+	if syscall.OS == "windows" {
+		switch c {
+		case '/':
+				return true
+		case '?':
+				return true
+		case '<':
+				return true
+		case '>':
+				return true
+		case '\\':
+				return true
+		case ':':
+				return true
+		case '*':
+				return true
+		case '|':
+				return true
+		case '"':
+				return true
+		default:
+				return false
+		}
+	}
+	return c == '/'
+}
+
 func (treeGen *TreeGen) randomName() string {
 	len := treeGen.rand.Intn(17) + 3
 	buf := &bytes.Buffer{}
@@ -75,7 +104,7 @@ func (treeGen *TreeGen) randomName() string {
 	
 	var nextByte byte
 	for i := 0; i < len; i++ {
-		for nextByte = rndByte(); nextByte == byte('/'); nextByte = rndByte() {}
+		for nextByte = rndByte(); isIllegal(nextByte); nextByte = rndByte() {}
 		buf.WriteByte(nextByte)
 	}
 	

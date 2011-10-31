@@ -23,12 +23,11 @@ func printPlan(plan *PatchPlan) {
 
 // Test that the matcher matches all blocks in two identical files.
 func TestMatchIdentity(t *testing.T) {
-	srcPath := "./testroot/My Music/0 10k 30.mp4"
+	srcPath := "../../testroot/My Music/0 10k 30.mp4"
 	dstPath := srcPath
 	
 	match, err := Match(srcPath, dstPath)
-	
-	assert.T(t, err == nil)
+	assert.Tf(t, err == nil, "%v", err)
 	
 	nMatches := 0
 	for i, match := range match.BlockMatches {
@@ -58,8 +57,8 @@ func TestMatchIdentity(t *testing.T) {
 // Test that the matcher matches blocks properly between two different files.
 // The munged file has a few bytes changed at known offsets which we check for.
 func TestMatchMunge(t *testing.T) {
-	srcPath := "./testroot/My Music/0 10k 30.mp4"
-	dstPath := "./testroot/My Music/0 10k 30 munged.mp4"
+	srcPath := "../../testroot/My Music/0 10k 30.mp4"
+	dstPath := "../../testroot/My Music/0 10k 30 munged.mp4"
 	
 	match, err := Match(srcPath, dstPath)
 	
@@ -126,16 +125,16 @@ func TestHoles(t *testing.T) {
 // Test an actual file patch on the munged file scenario from TestMatchMunge.
 // Resulting patched file should be identical to the source file.
 func TestPatch(t *testing.T) {
-	srcPath := "testroot/My Music/0 10k 30.mp4"
-	dstPath := "/var/tmp/foo.mp4"
+	srcPath := "../../testroot/My Music/0 10k 30.mp4"
+	dstPath := filepath.Join(os.TempDir(), "foo.mp4")
 	
 	os.Remove(dstPath)
 	
-	origDstF, err := os.Open("testroot/My Music/0 10k 30 munged.mp4")
-	assert.T(t, err == nil)
+	origDstF, err := os.Open("../../testroot/My Music/0 10k 30 munged.mp4")
+	assert.Tf(t, err == nil, "%v", err)
 	
 	dstF, err := os.Create(dstPath)
-	assert.T(t, err == nil)
+	assert.Tf(t, err == nil, "%v", err)
 	
 	_, err = io.Copy(dstF, origDstF)
 	assert.Tf(t, err == nil, "%v", err)
@@ -471,7 +470,7 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 		case 0:
 			conflict, is := cmd.(*Conflict)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, "foo/gloo"))
+			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, filepath.Join("foo", "gloo")))
 		case 1:
 			copy, is := cmd.(*SrcFileDownload)
 			assert.T(t, is)
@@ -532,12 +531,12 @@ func TestPatchRelocConflict(t *testing.T) {
 		case 0:
 			conflict, is := cmd.(*Conflict)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, "foo/gloo"))
+			assert.T(t, strings.HasSuffix(conflict.Path.RelPath, filepath.Join("foo", "gloo")))
 		case 1:
 			copy, is := cmd.(*Transfer)
 			assert.T(t, is)
-			assert.T(t, strings.HasSuffix(copy.From.Resolve(), "foo/gloo"))
-			assert.T(t, strings.HasSuffix(copy.To.Resolve(), "foo/gloo/bloo"))
+			assert.T(t, strings.HasSuffix(copy.From.Resolve(), filepath.Join("foo", "gloo")))
+			assert.T(t, strings.HasSuffix(copy.To.Resolve(), filepath.Join("foo", "gloo", "bloo")))
 		case 2:
 			copy, is := cmd.(*SrcFileDownload)
 			assert.T(t, is)
