@@ -20,7 +20,7 @@ func testIndexSomeMp3(t *testing.T) {
 	cwd, _ := os.Getwd()
 	t.Logf("CWD=%s", cwd)
 	
-	f, err = IndexFile("./testroot/My Music/0 10k 30.mp4")
+	f, err = IndexFile("../../testroot/My Music/0 10k 30.mp4")
 	if f == nil {
 		t.Fatalf("Failed to index file: %s", err.String())
 	}
@@ -46,7 +46,7 @@ func testDirIndex(t *testing.T) {
 }
 
 func testVisitDirsOnly(t *testing.T) {
-	dir, _ := IndexDir("testroot/")
+	dir, _ := IndexDir("../../testroot/")
 	collect := []*Dir{}
 	visited := []Node{}
 	
@@ -79,7 +79,7 @@ func testVisitDirsOnly(t *testing.T) {
 }
 
 func testVisitBlocks(t *testing.T) {
-	dir, _ := IndexDir("testroot/")
+	dir, _ := IndexDir("../../testroot/")
 	collect := []*Block{}
 	
 	Walk(dir, func(node Node) bool {
@@ -113,9 +113,9 @@ func TestNodeRelPath(t *testing.T) {
 	
 	assert.Equal(t, "", RelPath(dir))
 	assert.Equal(t, "foo", RelPath(dir.SubDirs[0]))
-	assert.Equal(t, "foo/bar", RelPath(dir.SubDirs[0].Files[0]))
+	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs[0].Files[0]))
 	
-	assert.Equal(t, "foo/bar", RelPath(dir.SubDirs[0].Files[0]))
+	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs[0].Files[0]))
 }
 
 func TestStoreRelPath(t *testing.T) {
@@ -143,8 +143,9 @@ func TestStoreRelPath(t *testing.T) {
 	_, err = os.Stat(filepath.Join(filepath.Join(path, "foo"), "bar"))
 	assert.T(t, err != nil)
 	
-	assert.Equal(t, newBar, store.Resolve("foo/bar"), "reloc path %s != resolve foo/bar %s",
-		newBar, store.Resolve("foo/bar"))
+	foobar := filepath.Join("foo", "bar")
+	assert.Equal(t, newBar, store.Resolve(foobar), "reloc path %s != resolve foo/bar %s",
+		newBar, store.Resolve(foobar))
 }
 
 func TestDirResolve(t *testing.T) {
@@ -190,12 +191,12 @@ func TestDirResolve(t *testing.T) {
 	_, isDir = node.(*Dir)
 	assert.T(t, isDir)
 	
-	node, found = foo.Resolve("bar/aleph")
+	node, found = foo.Resolve(filepath.Join("bar", "aleph"))
 	assert.T(t, found)
 	_, isDir = node.(*Dir)
 	assert.T(t, isDir)
 	
-	node, found = foo.Resolve("bar/aleph/A")
+	node, found = foo.Resolve(filepath.Join("bar", "aleph", "A"))
 	assert.T(t, found)
 	_, isFile := node.(*File)
 	assert.T(t, isFile)
@@ -216,14 +217,17 @@ func TestDirDescent(t *testing.T) {
 	dir, err := IndexDir(path)
 	assert.T(t, err == nil)
 	
-	for _, fpath := range []string{ "foo/baobab", "foo/bar/aleph/a", "foo/bar3003" } {
+	for _, fpath := range []string{ 
+			filepath.Join("foo", "baobab"),
+			filepath.Join("foo", "bar", "aleph", "a"),
+			filepath.Join("foo", "bar3003") } {
 		node, found := dir.Resolve(fpath)
 		assert.Tf(t, found, "not found: %s", fpath)
 		_, isFile := node.(*File)
 		assert.T(t, isFile)
 	}
 	
-	node, found := dir.Resolve("foo/bar")
+	node, found := dir.Resolve(filepath.Join("foo", "bar"))
 	assert.T(t, found)
 	_, isDir := node.(*Dir)
 	assert.T(t, isDir)
@@ -259,8 +263,8 @@ func TestGobbable(t *testing.T) {
 	foo, err := IndexDir(filepath.Join(path, "foo"))
 	assert.Tf(t, err == nil, "%v", err)
 	
-	node, found := foo.Resolve("bar/aleph/A")
-	assert.Equal(t, "bar/aleph/A", RelPath(node))
+	node, found := foo.Resolve(filepath.Join("bar", "aleph", "A"))
+	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
 	
 	bufferEnc := bytes.NewBuffer([]byte{})
 	encoder := gob.NewEncoder(bufferEnc)
@@ -274,12 +278,12 @@ func TestGobbable(t *testing.T) {
 	err = decoder.Decode(decFoo)
 	assert.Tf(t, err == nil, "%v", err)
 	
-	node, found = decFoo.Resolve("bar/aleph/A")
+	node, found = decFoo.Resolve(filepath.Join("bar", "aleph", "A"))
 	assert.T(t, found)
 	_, isFile := node.(*File)
 	assert.T(t, isFile)
 	
 	assert.T(t, node.Parent() != nil)
-	assert.Equal(t, "bar/aleph/A", RelPath(node))
+	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
 }
 
