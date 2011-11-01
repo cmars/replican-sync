@@ -694,5 +694,65 @@ func TestPatchPreserveKeeps(t *testing.T) {
 	assert.T(t, err == nil && info != nil)
 }
 
+func TestClean(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537)))))
+	srcpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := fs.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537))),
+			tg.D("beth", 
+				tg.F("B", tg.B(43, 65537)),
+				tg.F("b", tg.B(43, 65537))),
+			tg.D("jimmy",
+				tg.F("G", tg.B(44, 65537)),
+				tg.F("g", tg.B(44, 65537)))),
+		tg.D("baz", 
+			tg.D("uno", 
+				tg.F("1", tg.B(1, 65537)),
+				tg.F("I", tg.B(1, 65537))),
+			tg.D("dos", 
+				tg.F("2", tg.B(11, 65537)),
+				tg.F("II", tg.B(11, 65537))),
+			tg.D("tres", 
+				tg.F("3", tg.B(111, 65537)),
+				tg.F("III", tg.B(111, 65537)))))
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := fs.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	onePath := dstStore.Resolve(filepath.Join("foo", "baz", "uno", "1"))
+	_, err = os.Stat(onePath)
+	assert.Tf(t, err == nil, "%v", err)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
+	assert.Tf(t, err == nil, "%v", err)
+	
+	errors := make(chan os.Error, 10)
+	patchPlan.Clean(errors)
+	close(errors)
+	for err := range errors {
+		assert.Tf(t, err == nil, "%v", err)
+	}
+	
+	onePath = dstStore.Resolve(filepath.Join("foo", "baz", "uno", "1"))
+	_, err = os.Stat(onePath)
+	assert.Tf(t, err != nil, "%v", err)
+}
+
 
 

@@ -343,12 +343,26 @@ func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
 type PatchPlan struct {
 	Cmds []PatchCmd
 	
+	dstFileUnmatch map[string]*fs.File
+	
 	srcStore fs.BlockStore
 	dstStore *fs.LocalStore
 }
 
 func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 	plan := &PatchPlan{srcStore: srcStore, dstStore: dstStore}
+	
+	plan.dstFileUnmatch = make(map[string]*fs.File)
+	
+	fs.Walk(dstStore.Root(), func(dstNode fs.Node) bool {
+		
+		dstFile, isDstFile := dstNode.(*fs.File)
+		if isDstFile {
+			plan.dstFileUnmatch[fs.RelPath(dstFile)] = dstFile
+		}
+		
+		return !isDstFile
+	})
 	
 	relocRefs := make(map[string]int)
 	
@@ -363,6 +377,9 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 		
 		srcFile, isSrcFile := srcNode.(*fs.File)
 		srcPath := fs.RelPath(srcFsNode)
+		
+		// Remove this srcPath from dst unmatched, if it was present
+		plan.dstFileUnmatch[srcPath] = nil, false
 		
 		dstNode, hasDstNode := dstStore.Index().StrongFsNode(srcNode.Strong())
 		
@@ -453,6 +470,16 @@ func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 	}
 	
 	return nil, nil
+}
+
+func (plan *PatchPlan) Clean(errors chan<- os.Error) {
+	for dstPath, _ := range plan.dstFileUnmatch {
+		absPath := plan.dstStore.Resolve(dstPath)
+		err := os.Remove(absPath)
+		if err != nil && errors != nil {
+			errors <- err
+		}
+	}
 }
 
 func (plan *PatchPlan) String() string {
