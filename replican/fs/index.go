@@ -73,6 +73,7 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
 		
 		dir.name = basename
+		dir.mode = f.Mode
 		dir.parent = visitor.dirMap[dirname]
 		
 		if dir.parent != nil {
@@ -119,7 +120,8 @@ func IndexFile(path string) (file *File, err os.Error) {
 	var f *os.File
 	var buf [BLOCKSIZE]byte
 	
-	if stat, err := os.Stat(path); stat == nil {
+	stat, err := os.Stat(path)
+	if stat == nil {
 		return nil, err
 	} else if !stat.IsRegular() {
 		return nil, os.NewError(fmt.Sprintf("%s: not a regular file", path))
@@ -134,6 +136,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 	file = new(File)
 	_, basename := filepath.Split(path)
 	file.name = basename
+	file.mode = stat.Mode
 	
 	if fileInfo, err := f.Stat(); fileInfo != nil {
 		file.Size = fileInfo.Size

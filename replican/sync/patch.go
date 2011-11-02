@@ -472,6 +472,28 @@ func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 	return nil, nil
 }
 
+func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
+	fs.Walk(plan.srcStore.Root(), func(srcNode fs.Node) bool {
+		var err os.Error
+		srcFsNode, is := srcNode.(fs.FsNode)
+		if !is { return false }
+		
+		srcPath := fs.RelPath(srcFsNode)
+		if absPath := plan.dstStore.Resolve(srcPath); absPath != "" {
+			err = os.Chmod(absPath, srcFsNode.Mode())
+		} else {
+			err = os.NewError(fmt.Sprintf("Expected %s not found in destination", srcPath))
+		}
+		
+		if err != nil && errors != nil {
+			errors <- err
+		}
+		
+		_, is = srcNode.(*fs.Dir)
+		return is
+	})
+}
+
 func (plan *PatchPlan) Clean(errors chan<- os.Error) {
 	for dstPath, _ := range plan.dstFileUnmatch {
 		absPath := plan.dstStore.Resolve(dstPath)

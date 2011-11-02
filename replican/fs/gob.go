@@ -47,6 +47,8 @@ func (file *File) GobDecode(buf []byte) (err os.Error) {
 	
 	err = decoder.DecodeValue(reflect.ValueOf(&file.name))
 	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&file.mode))
+	if err != nil { return err }
 	err = decoder.DecodeValue(reflect.ValueOf(&file.strong))
 	if err != nil { return err }
 	err = decoder.DecodeValue(reflect.ValueOf(&file.Size))
@@ -69,6 +71,8 @@ func (dir *Dir) GobDecode(buf []byte) (err os.Error) {
 	if err != nil { return err }
 	
 	err = decoder.DecodeValue(reflect.ValueOf(&dir.name))
+	if err != nil { return err }
+	err = decoder.DecodeValue(reflect.ValueOf(&dir.mode))
 	if err != nil { return err }
 	err = decoder.DecodeValue(reflect.ValueOf(&dir.strong))
 	if err != nil { return err }
@@ -115,6 +119,8 @@ func (file *File) GobEncode() ([]byte, os.Error) {
 	
 	err = encoder.EncodeValue(reflect.ValueOf(&file.name))
 	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&file.mode))
+	if err != nil { return nil, err }
 	err = encoder.EncodeValue(reflect.ValueOf(&file.strong))
 	if err != nil { return nil, err }
 	err = encoder.EncodeValue(reflect.ValueOf(&file.Size))
@@ -134,6 +140,8 @@ func (dir *Dir) GobEncode() ([]byte, os.Error) {
 	if err != nil { return nil, err }
 	
 	err = encoder.EncodeValue(reflect.ValueOf(&dir.name))
+	if err != nil { return nil, err }
+	err = encoder.EncodeValue(reflect.ValueOf(&dir.mode))
 	if err != nil { return nil, err }
 	err = encoder.EncodeValue(reflect.ValueOf(&dir.strong))
 	if err != nil { return nil, err }

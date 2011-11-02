@@ -38,6 +38,9 @@ type FsNode interface {
 	// All FsNodes have names (file or directory name).
 	Name() string
 	
+	// All FsNodes have permissions
+	Mode() uint32
+	
 }
 
 // Given a filesystem node, calculate the relative path string to it from the root node.
@@ -80,6 +83,7 @@ func (block *Block) Parent() (FsNode) { return block.parent }
 // Represent a file in a hierarchical tree model.
 type File struct {
 	name string
+	mode uint32
 	strong string
 	parent *Dir
 	
@@ -88,6 +92,8 @@ type File struct {
 }
 
 func (file *File) Name() (string) { return file.name }
+
+func (file *File) Mode() (uint32) { return file.mode }
 
 // For our purposes, files are never considered root nodes.
 func (file *File) IsRoot() (bool) { return false }
@@ -99,6 +105,7 @@ func (file *File) Parent() (FsNode) { return file.parent }
 // Represent a directory in a hierarchical tree model.
 type Dir struct {
 	name string
+	mode uint32
 	strong string
 	parent *Dir
 	
@@ -107,6 +114,8 @@ type Dir struct {
 }
 
 func (dir *Dir) Name() (string) { return dir.name }
+
+func (dir *Dir) Mode() (uint32) { return dir.mode }
 
 func (dir *Dir) IsRoot() (bool) { return dir.parent == nil }
 
