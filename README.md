@@ -6,6 +6,11 @@
 replican-sync provides local file & directory synchronization with an implementation of the [rsync algorithm](http://rsync.samba.org/tech_report/). 
 It is not compatible with the wire protocols and indexing used in the [rsync(1)](http://www.samba.org/ftp/rsync/rsync.html) utility.
 
+## Status ##
+
+At this point, I'm hammering self-consistency and simplicity into the library 
+as I develop on it. The API is subject to change.
+
 ### Implemented ###
 
 * Linux, OSX, MinGW
