@@ -21,107 +21,6 @@ func printPlan(plan *PatchPlan) {
 	}
 }
 
-// Test that the matcher matches all blocks in two identical files.
-func TestMatchIdentity(t *testing.T) {
-	srcPath := "../../testroot/My Music/0 10k 30.mp4"
-	dstPath := srcPath
-	
-	match, err := Match(srcPath, dstPath)
-	assert.Tf(t, err == nil, "%v", err)
-	
-	nMatches := 0
-	for i, match := range match.BlockMatches {
-		assert.Equalf(t, int64(0), match.DstOffset % int64(fs.BLOCKSIZE), 
-				"Destination match block# %d not aligned with blocksize! (offset=%d)",
-				i, match.DstOffset)
-		nMatches++
-	}
-	
-	fileInfo, err := os.Stat(srcPath)
-	if fileInfo == nil {
-		t.Fatalf("Cannot stat file %s: ", err.String())
-	} else {
-		nExpectMatches := fileInfo.Size / int64(fs.BLOCKSIZE)
-		if fileInfo.Size % int64(fs.BLOCKSIZE) > 0 {
-			nExpectMatches++
-		}
-		
-		assert.Equal(t, nExpectMatches, int64(nMatches))
-	}
-	
-	lastBlockSize := fileInfo.Size - int64(match.BlockMatches[14].DstOffset)
-	assert.Equalf(t, int64(5419), lastBlockSize,
-			"Unxpected last block size: %d", lastBlockSize)
-}
-
-// Test that the matcher matches blocks properly between two different files.
-// The munged file has a few bytes changed at known offsets which we check for.
-func TestMatchMunge(t *testing.T) {
-	srcPath := "../../testroot/My Music/0 10k 30.mp4"
-	dstPath := "../../testroot/My Music/0 10k 30 munged.mp4"
-	
-	match, err := Match(srcPath, dstPath)
-	
-	assert.T(t, err == nil)
-	
-	nMatches := 0
-	for i, match := range match.BlockMatches {
-		assert.Equalf(t, int64(0), match.DstOffset % int64(fs.BLOCKSIZE),
-				"Destination match block# %d not aligned with blocksize! (offset=%d)",
-				i, match.DstOffset)
-		nMatches++
-	}
-	
-	assert.Equal(t, 13, nMatches)
-	
-	notMatches := match.NotMatched()
-	assert.Equal(t, 2, len(notMatches))
-}
-
-// Test some corner cases of FileMatch.NotMatched to correctly 
-// identify unmatched ranges between two files. No files were harmed 
-// in the creation of this test, we're fabricating a fake FileMatch.
-func TestHoles(t *testing.T) {
-	testMatch := &FileMatch{ 
-		SrcSize:99099, DstSize:99099, 
-		BlockMatches: []*BlockMatch{
-			&BlockMatch{DstOffset:123},
-			&BlockMatch{DstOffset:9991},
-			&BlockMatch{DstOffset:23023},
-		}}
-	
-	notMatched := testMatch.NotMatched()
-	
-	assert.Tf(t, len(notMatched) > 0, "Failed to detect obvious holes in match")
-	
-	for i, unmatch := range(notMatched) {
-		switch i {
-		case 0:
-			assert.Equal(t, int64(0), unmatch.From)
-			assert.Equal(t, int64(123), unmatch.To)
-			break
-			
-		case 1:
-			assert.Equal(t, int64(8315), unmatch.From)
-			assert.Equal(t, int64(9991), unmatch.To)
-			break
-			
-		case 2:
-			assert.Equal(t, int64(18183), unmatch.From)
-			assert.Equal(t, int64(23023), unmatch.To)
-			break
-			
-		case 3:
-			assert.Equal(t, int64(31215), unmatch.From)
-			assert.Equal(t, int64(99099), unmatch.To)
-			break
-		
-		default:
-			t.Fatalf("Unexpected not-match %v", unmatch)
-		}
-	}
-}
-
 // Test an actual file patch on the munged file scenario from TestMatchMunge.
 // Resulting patched file should be identical to the source file.
 func TestPatch(t *testing.T) {
@@ -270,9 +169,16 @@ func TestPatchFileAppend(t *testing.T) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 	
-	srcRoot, _ := fs.IndexDir(srcpath)
-	dstRoot, _ := fs.IndexDir(dstpath)
-	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
+	errorChan := make(chan os.Error)
+	go func(){
+		srcRoot := fs.IndexDir(srcpath, errorChan)
+		dstRoot := fs.IndexDir(dstpath, errorChan)
+		assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
+		close(errorChan)
+	}()
+	for err := range(errorChan) {
+		assert.Tf(t, err == nil, "%v", err)
+	}
 }
 
 // Test the patch planner on a case where the source file is a shorter,
@@ -325,9 +231,16 @@ func TestPatchFileTruncate(t *testing.T) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 	
-	srcRoot, _ := fs.IndexDir(srcpath)
-	dstRoot, _ := fs.IndexDir(dstpath)
-	assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
+	errorChan := make(chan os.Error)
+	go func(){
+		srcRoot := fs.IndexDir(srcpath, errorChan)
+		dstRoot := fs.IndexDir(dstpath, errorChan)
+		assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
+		close(errorChan)
+	}()
+	for err := range(errorChan) {
+		assert.Tf(t, err == nil, "%v", err)
+	}
 }
 
 // Test the patch planner's ability to track adding a bunch of new files.
@@ -617,12 +530,16 @@ func TestPatchWeakCollision(t *testing.T) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 	
-	srcDir, err := fs.IndexDir(srcpath)
-	assert.T(t, err == nil)
-	dstDir, err := fs.IndexDir(dstpath)
-	assert.T(t, err == nil)
-	
-	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+	errorChan := make(chan os.Error)
+	go func(){
+		srcDir := fs.IndexDir(srcpath, errorChan)
+		dstDir := fs.IndexDir(dstpath, errorChan)
+		assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+		close(errorChan)
+	}()
+	for err := range(errorChan) {
+		assert.Tf(t, err == nil, "%v", err)
+	}
 }
 
 func TestPatchRenameScope(t *testing.T) {
@@ -652,12 +569,16 @@ func TestPatchRenameScope(t *testing.T) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 	
-	srcDir, err := fs.IndexDir(srcpath)
-	assert.T(t, err == nil)
-	dstDir, err := fs.IndexDir(dstpath)
-	assert.T(t, err == nil)
-	
-	assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+	errorChan := make(chan os.Error)
+	go func(){
+		srcDir := fs.IndexDir(srcpath, errorChan)
+		dstDir := fs.IndexDir(dstpath, errorChan)
+		assert.Equal(t, srcDir.Strong(), dstDir.Strong())
+		close(errorChan)
+	}()
+	for err := range(errorChan) {
+		assert.Tf(t, err == nil, "%v", err)
+	}
 }
 
 func TestPatchPreserveKeeps(t *testing.T) {
@@ -742,9 +663,11 @@ func TestClean(t *testing.T) {
 	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
 	assert.Tf(t, err == nil, "%v", err)
 	
-	errors := make(chan os.Error, 10)
-	patchPlan.Clean(errors)
-	close(errors)
+	errors := make(chan os.Error)
+	go func(){
+		patchPlan.Clean(errors)
+		close(errors)
+	}()
 	for err := range errors {
 		assert.Tf(t, err == nil, "%v", err)
 	}
@@ -752,6 +675,118 @@ func TestClean(t *testing.T) {
 	onePath = dstStore.Resolve(filepath.Join("foo", "baz", "uno", "1"))
 	_, err = os.Stat(onePath)
 	assert.Tf(t, err != nil, "%v", err)
+}
+
+func TestSetModeNew(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537)))))
+	srcpath := treegen.TestTree(t, treeSpec)
+	os.Chmod(filepath.Join(srcpath, "foo", "bar", "aleph", "A"), 0765)
+	os.Chmod(filepath.Join(srcpath, "foo", "bar"), 0711)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := fs.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo")
+	dstpath := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := fs.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
+	assert.Tf(t, err == nil, "%v", err)
+	
+	errors := make(chan os.Error)
+	go func(){
+		patchPlan.Clean(errors)
+		close(errors)
+	}()
+	for err := range errors {
+		assert.Tf(t, err == nil, "%v", err)
+	}
+	
+	errors = make(chan os.Error)
+	go func(){
+		patchPlan.SetMode(errors)
+		close(errors)
+	}()
+	for err := range errors {
+		assert.Tf(t, err == nil, "%v", err)
+	}
+	
+	fileinfo, err := os.Stat(filepath.Join(dstpath, "foo", "bar", "aleph", "A"))
+	assert.T(t, fileinfo != nil)
+	assert.Equal(t, uint32(0765), fileinfo.Permission())
+	
+	fileinfo, err = os.Stat(filepath.Join(dstpath, "foo", "bar"))
+	assert.T(t, fileinfo != nil)
+	assert.Equal(t, uint32(0711), fileinfo.Permission())
+}
+
+func TestSetModeOverwrite(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", 
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537)))))
+	srcpath := treegen.TestTree(t, treeSpec)
+	os.Chmod(filepath.Join(srcpath, "foo", "bar", "aleph", "A"), 0765)
+	os.Chmod(filepath.Join(srcpath, "foo", "bar"), 0711)
+	defer os.RemoveAll(srcpath)
+	srcStore, err := fs.NewLocalStore(srcpath)
+	assert.T(t, err == nil)
+	
+	tg = treegen.New()
+	treeSpec = tg.D("foo", 
+		tg.D("bar", 
+			tg.D("aleph", 
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537)))))
+	dstpath := treegen.TestTree(t, treeSpec)
+	os.Chmod(filepath.Join(dstpath, "foo", "bar", "aleph", "A"), 0600)
+	os.Chmod(filepath.Join(dstpath, "foo", "bar"), 0700)
+	defer os.RemoveAll(dstpath)
+	dstStore, err := fs.NewLocalStore(dstpath)
+	assert.T(t, err == nil)
+	
+	patchPlan := NewPatchPlan(srcStore, dstStore)
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil, "%v %v", failedCmd, err)
+	assert.Tf(t, err == nil, "%v", err)
+	
+	errors := make(chan os.Error)
+	go func(){
+		patchPlan.Clean(errors)
+		close(errors)
+	}()
+	for err := range errors {
+		assert.Tf(t, err == nil, "%v", err)
+	}
+	
+	errors = make(chan os.Error)
+	go func(){
+		patchPlan.SetMode(errors)
+		close(errors)
+	}()
+	for err := range errors {
+		assert.Tf(t, err == nil, "%v", err)
+	}
+	
+	fileinfo, err := os.Stat(filepath.Join(dstpath, "foo", "bar", "aleph", "A"))
+	assert.T(t, fileinfo != nil)
+	assert.Equal(t, uint32(0765), fileinfo.Permission())
+	
+	fileinfo, err = os.Stat(filepath.Join(dstpath, "foo", "bar"))
+	assert.T(t, fileinfo != nil)
+	assert.Equal(t, uint32(0711), fileinfo.Permission())
 }
 
 

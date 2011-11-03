@@ -46,6 +46,7 @@ func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
 type indexVisitor struct {
 	root *Dir
 	dirMap map[string]*Dir
+	errors chan<-os.Error
 }
 
 // Initialize the IndexDir visitor
@@ -54,10 +55,13 @@ func newVisitor(path string) *indexVisitor {
 	path = strings.TrimRight(path, "/\\")
 	
 	visitor := new(indexVisitor)
+	visitor.errors = make(chan os.Error)
 	visitor.dirMap = make(map[string]*Dir)
-	visitor.root = new(Dir)
-	visitor.dirMap[path] = visitor.root
-	
+	if rootInfo, err := os.Stat(path); err == nil {
+		visitor.VisitDir(path, rootInfo)
+		visitor.root = visitor.dirMap[path]
+	}
+		
 	return visitor
 }
 
@@ -97,22 +101,33 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 		if file.parent, hasParent = visitor.dirMap[dirpath]; hasParent {
 			file.parent.Files = append(file.parent.Files, file)
 			return
-		} else {
-			err = os.NewError("cannot locate parent directory")
+		} else if visitor.errors != nil {
+			visitor.errors <- os.NewError("cannot locate parent directory")
 		}
 	}
-	fmt.Errorf("failed to read file %s: %s", path, err.String())
+	
+	if err != nil && visitor.errors != nil {
+		visitor.errors <- err
+	}
 }
 
 // Build a hierarchical tree model representing a directory's contents
-func IndexDir(path string) (dir *Dir, err os.Error) {
+func IndexDir(path string, errors chan<-os.Error) *Dir {
+	control := make(chan bool)
 	visitor := newVisitor(path)
-	filepath.Walk(path, visitor, nil)
+	visitor.errors = errors
+	
+	go func(){
+		filepath.Walk(path, visitor, errors)
+		close(control)
+	}()
+	<-control
+	
 	if visitor.root != nil {
 		visitor.root.Strong()
-		return visitor.root, nil
 	}
-	return nil, nil
+	
+	return visitor.root
 }
 
 // Build a hierarchical tree model representing a file's contents

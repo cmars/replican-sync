@@ -47,8 +47,10 @@ func NewLocalStore(rootPath string) (*LocalStore, os.Error) {
 }
 
 func (store *LocalStore) reindex() (err os.Error) {
-	store.root, err = IndexDir(store.rootPath)
-	if store.root == nil { return err }
+	store.root = IndexDir(store.rootPath, nil)
+	if store.root == nil {
+		return os.NewError(fmt.Sprintf("Failed to reindex root: %s", store.rootPath))
+	}
 	
 	store.index = IndexBlocks(store.root)
 	return nil

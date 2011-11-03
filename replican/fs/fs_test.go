@@ -31,7 +31,7 @@ func testIndexSomeMp3(t *testing.T) {
 }
 
 func testDirIndex(t *testing.T) {
-	dir, _ := IndexDir("testroot/")
+	dir := IndexDir("testroot/", nil)
 	
 	assert.Equal(t, "10dc111ed3edd17ac89e303e877874aa61b45434", dir.Strong())
 	
@@ -46,7 +46,8 @@ func testDirIndex(t *testing.T) {
 }
 
 func testVisitDirsOnly(t *testing.T) {
-	dir, _ := IndexDir("../../testroot/")
+	dir := IndexDir("../../testroot/", nil)
+	
 	collect := []*Dir{}
 	visited := []Node{}
 	
@@ -79,7 +80,8 @@ func testVisitDirsOnly(t *testing.T) {
 }
 
 func testVisitBlocks(t *testing.T) {
-	dir, _ := IndexDir("../../testroot/")
+	dir := IndexDir("../../testroot/", nil)
+	
 	collect := []*Block{}
 	
 	Walk(dir, func(node Node) bool {
@@ -108,8 +110,7 @@ func TestNodeRelPath(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 	
-	dir, err := IndexDir(path)
-	assert.T(t, err == nil)
+	dir := IndexDir(path, nil)
 	
 	assert.Equal(t, "", RelPath(dir))
 	assert.Equal(t, "foo", RelPath(dir.SubDirs[0]))
@@ -175,8 +176,7 @@ func TestDirResolve(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 	
-	foo, err := IndexDir(filepath.Join(path, "foo"))
-	assert.Tf(t, err == nil, "%v", err)
+	foo := IndexDir(filepath.Join(path, "foo"), nil)
 	
 	var node FsNode
 	var found bool
@@ -214,8 +214,7 @@ func TestDirDescent(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 	
-	dir, err := IndexDir(path)
-	assert.T(t, err == nil)
+	dir := IndexDir(path, nil)
 	
 	for _, fpath := range []string{ 
 			filepath.Join("foo", "baobab"),
@@ -260,15 +259,14 @@ func TestGobbable(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 	
-	foo, err := IndexDir(filepath.Join(path, "foo"))
-	assert.Tf(t, err == nil, "%v", err)
+	foo := IndexDir(filepath.Join(path, "foo"), nil)
 	
 	node, found := foo.Resolve(filepath.Join("bar", "aleph", "A"))
 	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
 	
 	bufferEnc := bytes.NewBuffer([]byte{})
 	encoder := gob.NewEncoder(bufferEnc)
-	err = encoder.Encode(foo)
+	err := encoder.Encode(foo)
 	assert.Tf(t, err == nil, "%v", err)
 	
 	bufferDec := bytes.NewBuffer(bufferEnc.Bytes())
