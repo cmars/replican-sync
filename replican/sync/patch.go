@@ -1,4 +1,3 @@
-
 package sync
 
 import (
@@ -16,72 +15,78 @@ func PatchFile(src string, dst string) os.Error {
 	if match == nil {
 		return err
 	}
-	
+
 	var buf [fs.BLOCKSIZE]byte
-	
+
 	_, dstname := filepath.Split(dst)
 	newdstF, err := ioutil.TempFile("", dstname)
-	if newdstF == nil { return err }
+	if newdstF == nil {
+		return err
+	}
 	defer newdstF.Close()
-	
+
 	dstF, err := os.Open(dst)
-	if dstF == nil { return err }
+	if dstF == nil {
+		return err
+	}
 	defer dstF.Close()
-	
+
 	// Write blocks from dst that we already have
 DST_2_NEWDST:
 	for _, blockMatch := range match.BlockMatches {
 		dstF.Seek(blockMatch.DstOffset, 0)
 		newdstF.Seek(blockMatch.DstOffset, 0)
-		
+
 		switch rd, err := dstF.Read(buf[:]); true {
 		case rd < 0:
 			return err
-		
+
 		case rd == 0:
 			break DST_2_NEWDST
-		
+
 		case rd > 0:
 			newdstF.Write(buf[:rd])
 		}
 	}
-	
+
 	srcF, err := os.Open(src)
-	if srcF == nil { return err }
+	if srcF == nil {
+		return err
+	}
 	defer srcF.Close()
-	
+
 	// Fill in the rest from src
 SRC_2_NEWDST:
 	for _, notMatch := range match.NotMatched() {
 		srcF.Seek(notMatch.From, 0)
 		newdstF.Seek(notMatch.From, 0)
-		
+
 		for toRd := notMatch.Size(); toRd > 0; {
 			var rd int
 			switch rd, err := srcF.Read(buf[:]); true {
 			case rd < 0:
 				return err
-		
+
 			case rd == 0:
 				break SRC_2_NEWDST
-		
+
 			case rd > 0:
 				newdstF.Write(buf[:rd])
 			}
-			
+
 			toRd -= int64(rd)
 		}
 	}
-	
+
 	newdst := newdstF.Name()
-	
+
 	newdstF.Close()
 	dstF.Close()
-	
+
 	os.Remove(dst)
-	
+
 	err = fs.Move(newdst, dst)
-	
+
 	return err
 }
 
@@ -97,7 +102,7 @@ func (absPath AbsolutePath) Resolve() string {
 
 type LocalPath struct {
 	LocalStore *fs.LocalStore
-	RelPath string
+	RelPath    string
 }
 
 func (localPath *LocalPath) String() string {
@@ -109,14 +114,12 @@ func (localPath *LocalPath) Resolve() string {
 }
 
 type PatchCmd interface {
-	
 	String() string
-	
+
 	Exec(srcStore fs.BlockStore) os.Error
-	
 }
 
-func mkParentDirs(path PathRef) (os.Error) {
+func mkParentDirs(path PathRef) os.Error {
 	dir, _ := filepath.Split(path.Resolve())
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -127,8 +130,8 @@ func mkParentDirs(path PathRef) (os.Error) {
 // Copy a local file.
 type Transfer struct {
 	From *LocalPath
-	To *LocalPath
-	
+	To   *LocalPath
+
 	relocRefs map[string]int
 }
 
@@ -139,36 +142,44 @@ func (transfer *Transfer) String() string {
 func (transfer *Transfer) Exec(srcStore fs.BlockStore) (err os.Error) {
 	transfer.relocRefs[transfer.From.RelPath]--
 	refCount := transfer.relocRefs[transfer.From.RelPath]
-	
+
 	switch {
 	case refCount == 0:
 		return transfer.move(srcStore)
 	case refCount > 0:
 		return transfer.copy(srcStore)
 	}
-	
+
 	return os.NewError(fmt.Sprintf(
 		"Cannot transfer %s: reference count underflow", transfer.From.RelPath))
 }
 
 func (transfer *Transfer) copy(srcStore fs.BlockStore) os.Error {
-	if err := mkParentDirs(transfer.To); err != nil { return err }
-	
+	if err := mkParentDirs(transfer.To); err != nil {
+		return err
+	}
+
 	srcF, err := os.Open(transfer.From.Resolve())
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer srcF.Close()
-	
+
 	dstF, err := os.Create(transfer.To.Resolve())
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer dstF.Close()
-	
+
 	_, err = io.Copy(dstF, srcF)
 	return err
 }
 
 func (transfer *Transfer) move(srcStore fs.BlockStore) os.Error {
-	if err := mkParentDirs(transfer.To); err != nil { return err }
-	
+	if err := mkParentDirs(transfer.To); err != nil {
+		return err
+	}
+
 	return fs.Move(transfer.From.Resolve(), transfer.To.Resolve())
 }
 
@@ -181,15 +192,15 @@ func (keep *Keep) String() string {
 	return fmt.Sprintf("Keep %s", keep.Path.Resolve())
 }
 
-func (keep *Keep) Exec(srcStore fs.BlockStore) os.Error { 
+func (keep *Keep) Exec(srcStore fs.BlockStore) os.Error {
 	return nil
 }
 
 // Register a conflict
 type Conflict struct {
-	Path *LocalPath
+	Path     *LocalPath
 	FileInfo *os.FileInfo
-	
+
 	relocPath string
 }
 
@@ -225,9 +236,9 @@ func (resize *Resize) Exec(srcStore fs.BlockStore) os.Error {
 type LocalTemp struct {
 	Path PathRef
 	Size int64
-	
+
 	localFh *os.File
-	tempFh *os.File
+	tempFh  *os.File
 }
 
 func (localTemp *LocalTemp) String() string {
@@ -236,16 +247,22 @@ func (localTemp *LocalTemp) String() string {
 
 func (localTemp *LocalTemp) Exec(srcStore fs.BlockStore) (err os.Error) {
 	localTemp.localFh, err = os.Open(localTemp.Path.Resolve())
-	if localTemp.localFh == nil { return err }
-	
+	if localTemp.localFh == nil {
+		return err
+	}
+
 	localDir, localName := filepath.Split(localTemp.Path.Resolve())
-	
+
 	localTemp.tempFh, err = ioutil.TempFile(localDir, localName)
-	if localTemp.tempFh == nil { return err }
-	
+	if localTemp.tempFh == nil {
+		return err
+	}
+
 	err = localTemp.tempFh.Truncate(localTemp.Size)
-	if (err != nil) { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -262,25 +279,29 @@ func (rwt *ReplaceWithTemp) Exec(srcStore fs.BlockStore) (err os.Error) {
 	tempName := rwt.Temp.tempFh.Name()
 	rwt.Temp.localFh.Close()
 	rwt.Temp.localFh = nil
-	
+
 	rwt.Temp.tempFh.Close()
 	rwt.Temp.tempFh = nil
-	
+
 	err = os.Remove(rwt.Temp.Path.Resolve())
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	err = fs.Move(tempName, rwt.Temp.Path.Resolve())
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // Copy a range of data known to already be in the local destination file.
 type LocalTempCopy struct {
-	Temp *LocalTemp
+	Temp        *LocalTemp
 	LocalOffset int64
-	TempOffset int64
-	Length int64
+	TempOffset  int64
+	Length      int64
 }
 
 func (ltc *LocalTempCopy) String() string {
@@ -290,22 +311,26 @@ func (ltc *LocalTempCopy) String() string {
 
 func (ltc *LocalTempCopy) Exec(srcStore fs.BlockStore) (err os.Error) {
 	_, err = ltc.Temp.localFh.Seek(ltc.LocalOffset, 0)
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	_, err = ltc.Temp.tempFh.Seek(ltc.TempOffset, 0)
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	_, err = io.Copyn(ltc.Temp.tempFh, ltc.Temp.localFh, ltc.Length)
 	return err
 }
 
 // Copy a range of data from the source file into a local temp file.
 type SrcTempCopy struct {
-	Temp *LocalTemp
-	SrcStrong string
-	SrcOffset int64
+	Temp       *LocalTemp
+	SrcStrong  string
+	SrcOffset  int64
 	TempOffset int64
-	Length int64
+	Length     int64
 }
 
 func (stc *SrcTempCopy) String() string {
@@ -322,8 +347,8 @@ func (stc *SrcTempCopy) Exec(srcStore fs.BlockStore) os.Error {
 // Copy a range of data from the source file to the destination file.
 type SrcFileDownload struct {
 	SrcFile *fs.File
-	Path PathRef
-	Length int64
+	Path    PathRef
+	Length  int64
 }
 
 func (sfd *SrcFileDownload) String() string {
@@ -331,125 +356,129 @@ func (sfd *SrcFileDownload) String() string {
 }
 
 func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
-	if err := mkParentDirs(sfd.Path); err != nil { return err }
-	
+	if err := mkParentDirs(sfd.Path); err != nil {
+		return err
+	}
+
 	dstFh, err := os.Create(sfd.Path.Resolve())
-	if dstFh == nil { return err }
-	
+	if dstFh == nil {
+		return err
+	}
+
 	_, err = srcStore.ReadInto(sfd.SrcFile.Strong(), 0, sfd.SrcFile.Size, dstFh)
 	return err
 }
 
 type PatchPlan struct {
 	Cmds []PatchCmd
-	
+
 	dstFileUnmatch map[string]*fs.File
-	
+
 	srcStore fs.BlockStore
 	dstStore *fs.LocalStore
 }
 
 func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 	plan := &PatchPlan{srcStore: srcStore, dstStore: dstStore}
-	
+
 	plan.dstFileUnmatch = make(map[string]*fs.File)
-	
+
 	fs.Walk(dstStore.Root(), func(dstNode fs.Node) bool {
-		
+
 		dstFile, isDstFile := dstNode.(*fs.File)
 		if isDstFile {
 			plan.dstFileUnmatch[fs.RelPath(dstFile)] = dstFile
 		}
-		
+
 		return !isDstFile
 	})
-	
+
 	relocRefs := make(map[string]int)
-	
+
 	// Find all the FsNode matches
 	fs.Walk(srcStore.Root(), func(srcNode fs.Node) bool {
-		
+
 		// Ignore non-FsNodes
 		srcFsNode, isSrcFsNode := srcNode.(fs.FsNode)
 		if !isSrcFsNode {
 			return false
 		}
-		
+
 		srcFile, isSrcFile := srcNode.(*fs.File)
 		srcPath := fs.RelPath(srcFsNode)
-		
+
 		// Remove this srcPath from dst unmatched, if it was present
 		plan.dstFileUnmatch[srcPath] = nil, false
-		
+
 		dstNode, hasDstNode := dstStore.Index().StrongFsNode(srcNode.Strong())
-		
+
 		isDstFile := false
 		if hasDstNode {
 			_, isDstFile = dstNode.(*fs.File)
 		}
-		
+
 		dstFilePath := dstStore.Resolve(srcPath)
 		dstFileInfo, _ := os.Stat(dstFilePath)
-		
-//		fmt.Printf("srcPath=%s hasDstNode=%v isDstFsNode=%v isSrcFile=%v, isDstFile=%v\n%v\n\n",
-//			srcPath, hasDstNode, isDstFsNode, isSrcFile, isDstFile, dstNode)
-		
+
+		//		fmt.Printf("srcPath=%s hasDstNode=%v isDstFsNode=%v isSrcFile=%v, isDstFile=%v\n%v\n\n",
+		//			srcPath, hasDstNode, isDstFsNode, isSrcFile, isDstFile, dstNode)
+
 		// Resolve dst node that matches strong checksum with source
 		if hasDstNode && isSrcFile == isDstFile {
 			dstPath := fs.RelPath(dstNode)
 			relocRefs[dstPath]++ // dstPath will be used in this cmd, inc ref count
-			
+
 			if srcPath != dstPath {
 				// Local dst file needs to be renamed or copied to src path
-				from := &LocalPath{ LocalStore: dstStore, RelPath: dstPath }
-				to := &LocalPath{ LocalStore: dstStore, RelPath: srcPath }
-				plan.Cmds = append(plan.Cmds, 
-					&Transfer{ From: from, To: to, relocRefs: relocRefs })
+				from := &LocalPath{LocalStore: dstStore, RelPath: dstPath}
+				to := &LocalPath{LocalStore: dstStore, RelPath: srcPath}
+				plan.Cmds = append(plan.Cmds,
+					&Transfer{From: from, To: to, relocRefs: relocRefs})
 			} else {
 				// Same path, keep it where it is
 				plan.Cmds = append(plan.Cmds, &Keep{
-					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
+					Path: &LocalPath{LocalStore: dstStore, RelPath: srcPath}})
 			}
-			
-		// If its a file, figure out what to do with it
-		} else if (isSrcFile) {
-			
+
+			// If its a file, figure out what to do with it
+		} else if isSrcFile {
+
 			switch {
-			
+
 			// Destination is not a file, so get rid of whatever is there first
 			case dstFileInfo != nil && !dstFileInfo.IsRegular():
-				plan.Cmds = append(plan.Cmds, &Conflict{ 
-					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }, 
-					FileInfo: dstFileInfo })
+				plan.Cmds = append(plan.Cmds, &Conflict{
+					Path:     &LocalPath{LocalStore: dstStore, RelPath: srcPath},
+					FileInfo: dstFileInfo})
 				fallthrough
-			
+
 			// Destination file does not exist, so full source copy needed
 			case dstFileInfo == nil:
 				plan.Cmds = append(plan.Cmds, &SrcFileDownload{
 					SrcFile: srcFile,
-					Path: &LocalPath{ LocalStore: dstStore, RelPath: srcPath }})
+					Path:    &LocalPath{LocalStore: dstStore, RelPath: srcPath}})
 				break
-			
+
 			// Destination file exists, add block-level commands
 			default:
 				plan.appendFilePlan(srcFile, srcPath)
 				break
 			}
-			
-		// If its a directory, check for conflicting files of same name
+
+			// If its a directory, check for conflicting files of same name
 		} else {
-			
+
 			if dstFileInfo != nil && !dstFileInfo.IsDirectory() {
-				plan.Cmds = append(plan.Cmds, &Conflict{ 
-					Path: &LocalPath{ LocalStore: dstStore, RelPath: dstFilePath },
-					FileInfo: dstFileInfo })
+				plan.Cmds = append(plan.Cmds, &Conflict{
+					Path:     &LocalPath{LocalStore: dstStore, RelPath: dstFilePath},
+					FileInfo: dstFileInfo})
 			}
 		}
-		
+
 		return !isSrcFile
 	})
-	
-	return plan 
+
+	return plan
 }
 
 func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
@@ -459,16 +488,16 @@ func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 		if err != nil {
 			return cmd, err
 		}
-		
+
 		if conflict, is := cmd.(*Conflict); is {
 			conflicts = append(conflicts, conflict)
 		}
 	}
-	
+
 	for _, conflict := range conflicts {
 		conflict.Cleanup()
 	}
-	
+
 	return nil, nil
 }
 
@@ -476,19 +505,21 @@ func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
 	fs.Walk(plan.srcStore.Root(), func(srcNode fs.Node) bool {
 		var err os.Error
 		srcFsNode, is := srcNode.(fs.FsNode)
-		if !is { return false }
-		
+		if !is {
+			return false
+		}
+
 		srcPath := fs.RelPath(srcFsNode)
 		if absPath := plan.dstStore.Resolve(srcPath); absPath != "" {
 			err = os.Chmod(absPath, srcFsNode.Mode())
 		} else {
 			err = os.NewError(fmt.Sprintf("Expected %s not found in destination", srcPath))
 		}
-		
+
 		if err != nil && errors != nil {
 			errors <- err
 		}
-		
+
 		_, is = srcNode.(*fs.Dir)
 		return is
 	})
@@ -518,37 +549,34 @@ func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error
 		return err
 	}
 	match.SrcSize = srcFile.Size
-	
+
 	// Create a local temporary file in which to effect changes
-	localTemp := &LocalTemp{ 
-		Path: &LocalPath{ 
+	localTemp := &LocalTemp{
+		Path: &LocalPath{
 			LocalStore: plan.dstStore,
-			RelPath: dstPath },
-		Size: match.SrcSize }
+			RelPath:    dstPath},
+		Size: match.SrcSize}
 	plan.Cmds = append(plan.Cmds, localTemp)
-	
+
 	for _, blockMatch := range match.BlockMatches {
 		plan.Cmds = append(plan.Cmds, &LocalTempCopy{
-			Temp: localTemp,
+			Temp:        localTemp,
 			LocalOffset: blockMatch.SrcBlock.Offset(),
-			TempOffset: blockMatch.DstOffset,
-			Length: int64(fs.BLOCKSIZE)})
+			TempOffset:  blockMatch.DstOffset,
+			Length:      int64(fs.BLOCKSIZE)})
 	}
-	
+
 	for _, srcRange := range match.NotMatched() {
 		plan.Cmds = append(plan.Cmds, &SrcTempCopy{
-			Temp: localTemp,
-			SrcStrong: srcFile.Strong(),
-			SrcOffset: srcRange.From,
+			Temp:       localTemp,
+			SrcStrong:  srcFile.Strong(),
+			SrcOffset:  srcRange.From,
 			TempOffset: srcRange.From,
-			Length: srcRange.To - srcRange.From})
+			Length:     srcRange.To - srcRange.From})
 	}
-	
+
 	// Replace dst file with temp
-	plan.Cmds = append(plan.Cmds, &ReplaceWithTemp{ Temp: localTemp })
-	
+	plan.Cmds = append(plan.Cmds, &ReplaceWithTemp{Temp: localTemp})
+
 	return nil
 }
-
-
-

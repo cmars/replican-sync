@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -13,13 +12,13 @@ import (
  */
 func randBuf(seed int64) []byte {
 	rnd := rand.New(rand.NewSource(seed))
-	
+
 	buf := &bytes.Buffer{}
-	
+
 	for i := 0; i < fs.BLOCKSIZE; i++ {
 		buf.WriteByte(byte(rnd.Int()))
 	}
-	
+
 	return buf.Bytes()
 }
 
@@ -32,7 +31,7 @@ func main() {
 	for i := int64(0); i < int64(0xFFFFFFFF); i++ {
 		buf := randBuf(i)
 		block := fs.IndexBlock(buf)
-		
+
 		collision, matched := weaks[block.Weak()]
 		if matched {
 			fmt.Printf("Collision found: seeds %d and %d\n", collision, i)
@@ -41,11 +40,8 @@ func main() {
 			weaks[block.Weak()] = i
 		}
 	}
-	
+
 	if nhits == 0 {
 		fmt.Printf("No collisions found, try something else.\n")
 	}
 }
-
-
-

@@ -1,4 +1,3 @@
-
 package sync
 
 import (
@@ -10,7 +9,7 @@ import (
 	"github.com/cmars/replican-sync/replican/treegen"
 	"strings"
 	"testing"
-	
+
 	"github.com/bmizerany/assert"
 )
 
@@ -26,31 +25,33 @@ func printPlan(plan *PatchPlan) {
 func TestPatch(t *testing.T) {
 	srcPath := "../../testroot/My Music/0 10k 30.mp4"
 	dstPath := filepath.Join(os.TempDir(), "foo.mp4")
-	
+
 	os.Remove(dstPath)
-	
+
 	origDstF, err := os.Open("../../testroot/My Music/0 10k 30 munged.mp4")
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	dstF, err := os.Create(dstPath)
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	_, err = io.Copy(dstF, origDstF)
 	assert.Tf(t, err == nil, "%v", err)
 
 	origDstF.Close()
 	dstF.Close()
-	
+
 	err = PatchFile(srcPath, dstPath)
-	if err != nil { fmt.Print(err.String()) }
+	if err != nil {
+		fmt.Print(err.String())
+	}
 	assert.T(t, err == nil)
-	
+
 	srcFile, err := fs.IndexFile(srcPath)
 	assert.T(t, err == nil)
-	
+
 	dstFile, err := fs.IndexFile(dstPath)
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	assert.Equal(t, srcFile.Strong(), dstFile.Strong())
 }
 
@@ -58,20 +59,20 @@ func TestPatch(t *testing.T) {
 func TestPatchIdentity(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
-	
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	assert.T(t, len(patchPlan.Cmds) > 0)
 	for i := 0; i < len(patchPlan.Cmds); i++ {
 		keep := patchPlan.Cmds[0].(*Keep)
@@ -84,32 +85,32 @@ func TestPatchIdentity(t *testing.T) {
 func TestMatchAppend(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.F("bar", tg.B(42, 65537), tg.B(43, 65537))
-	
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	
+
 	// Try indexing root dir as a file
 	srcFile, err := fs.IndexFile(srcpath)
 	assert.Tf(t, err != nil, "%v", err)
-	
+
 	// Ok, for real this time
 	srcFile, err = fs.IndexFile(filepath.Join(srcpath, "bar"))
 	assert.Tf(t, err == nil, "%v", err)
 	assert.Equal(t, 17, len(srcFile.Blocks))
-	
+
 	tg = treegen.New()
 	treeSpec = tg.F("bar", tg.B(42, 65537))
-	
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstFile, err := fs.IndexFile(filepath.Join(dstpath, "bar"))
 	assert.Equal(t, 9, len(dstFile.Blocks))
-	
+
 	match, err := MatchFile(srcFile, filepath.Join(dstpath, "bar"))
 	assert.T(t, err == nil, "%v", err)
-	
+
 	assert.Equal(t, 8, len(match.BlockMatches))
-	
+
 	notMatched := match.NotMatched()
 	assert.Equal(t, 1, len(notMatched))
 	assert.Equal(t, int64(65536), notMatched[0].From)
@@ -122,23 +123,23 @@ func TestMatchAppend(t *testing.T) {
 func TestPatchFileAppend(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
-	
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
 	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537)))
-	
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	complete := false
 	for i, cmd := range patchPlan.Cmds {
 		switch {
@@ -146,12 +147,12 @@ func TestPatchFileAppend(t *testing.T) {
 			localTemp, isTemp := cmd.(*LocalTemp)
 			assert.T(t, isTemp)
 			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path.Resolve())
-		case i >= 1 && i <=8:
+		case i >= 1 && i <= 8:
 			ltc, isLtc := cmd.(*LocalTempCopy)
 			assert.Tf(t, isLtc, "cmd %d", i)
 			assert.Equal(t, ltc.LocalOffset, ltc.TempOffset)
 			assert.Equal(t, int64(fs.BLOCKSIZE), ltc.Length)
-			assert.Equal(t, int64(0), ltc.LocalOffset % int64(fs.BLOCKSIZE))
+			assert.Equal(t, int64(0), ltc.LocalOffset%int64(fs.BLOCKSIZE))
 		case i == 9:
 			stc, isStc := cmd.(*SrcTempCopy)
 			assert.T(t, isStc)
@@ -165,18 +166,18 @@ func TestPatchFileAppend(t *testing.T) {
 		}
 	}
 	assert.T(t, complete, "missing expected number of commands")
-	
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	errorChan := make(chan os.Error)
-	go func(){
+	go func() {
 		srcRoot := fs.IndexDir(srcpath, errorChan)
 		dstRoot := fs.IndexDir(dstpath, errorChan)
 		assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 		close(errorChan)
 	}()
-	for err := range(errorChan) {
+	for err := range errorChan {
 		assert.Tf(t, err == nil, "%v", err)
 	}
 }
@@ -187,23 +188,23 @@ func TestPatchFileAppend(t *testing.T) {
 func TestPatchFileTruncate(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
-	
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
 	treeSpec = tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
-	
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	complete := false
 	for i, cmd := range patchPlan.Cmds {
 		switch {
@@ -211,12 +212,12 @@ func TestPatchFileTruncate(t *testing.T) {
 			localTemp, isTemp := cmd.(*LocalTemp)
 			assert.T(t, isTemp)
 			assert.Equal(t, filepath.Join(dstpath, "foo", "bar"), localTemp.Path.Resolve())
-		case i >= 1 && i <=8:
+		case i >= 1 && i <= 8:
 			ltc, isLtc := cmd.(*LocalTempCopy)
 			assert.Tf(t, isLtc, "cmd %d", i)
 			assert.Equal(t, ltc.LocalOffset, ltc.TempOffset)
 			assert.Equal(t, int64(fs.BLOCKSIZE), ltc.Length)
-			assert.Equal(t, int64(0), ltc.LocalOffset % int64(fs.BLOCKSIZE))
+			assert.Equal(t, int64(0), ltc.LocalOffset%int64(fs.BLOCKSIZE))
 		case i == 9:
 			stc, isStc := cmd.(*SrcTempCopy)
 			assert.T(t, isStc)
@@ -227,18 +228,18 @@ func TestPatchFileTruncate(t *testing.T) {
 		}
 	}
 	assert.T(t, complete, "missing expected number of commands")
-	
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	errorChan := make(chan os.Error)
-	go func(){
+	go func() {
 		srcRoot := fs.IndexDir(srcpath, errorChan)
 		dstRoot := fs.IndexDir(dstpath, errorChan)
 		assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 		close(errorChan)
 	}()
-	for err := range(errorChan) {
+	for err := range errorChan {
 		assert.Tf(t, err == nil, "%v", err)
 	}
 }
@@ -246,29 +247,29 @@ func TestPatchFileTruncate(t *testing.T) {
 // Test the patch planner's ability to track adding a bunch of new files.
 func TestPatchAdd(t *testing.T) {
 	tg := treegen.New()
-	
+
 	files := []treegen.Generated{}
 	for i := 0; i < 10; i++ {
 		files = append(files, tg.F("", tg.B(int64(42*i), int64(500000*i))))
 	}
-	
+
 	treeSpec := tg.D("foo", tg.D("bar", files...))
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(filepath.Join(srcpath, "foo"))
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
 	treeSpec = tg.D("foo", tg.D("bar"), tg.D("baz"))
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(filepath.Join(dstpath, "foo"))
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	
-//	printPlan(patchPlan)
-	
+
+	//	printPlan(patchPlan)
+
 	for _, cmd := range patchPlan.Cmds {
 		_, isSfd := cmd.(*SrcFileDownload)
 		assert.T(t, isSfd)
@@ -279,22 +280,22 @@ func TestPatchAdd(t *testing.T) {
 func TestPatchRenameFileSameDir(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
-	
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
 	treeSpec = tg.D("foo", tg.F("baz", tg.B(42, 65537)))
-	
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-	
+
 	assert.Equal(t, 1, len(patchPlan.Cmds))
 	rename, isRename := patchPlan.Cmds[0].(*Transfer)
 	assert.T(t, isRename)
@@ -306,35 +307,35 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 // source and destination, where files have identical content in both.
 func TestPatchRenameFileDifferentDir(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.D("gloo", 
-						tg.F("bloo", tg.B(99, 99)), 
-						tg.D("groo", 
-							tg.D("snoo", 
-								tg.F("bar", tg.B(42, 65537))))))
-	
+	treeSpec := tg.D("foo",
+		tg.D("gloo",
+			tg.F("bloo", tg.B(99, 99)),
+			tg.D("groo",
+				tg.D("snoo",
+					tg.F("bar", tg.B(42, 65537))))))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("pancake", 
-					tg.F("butter", tg.B(42, 65537)), 
-					tg.F("syrup", tg.B(99, 99)))
-	
+	treeSpec = tg.D("pancake",
+		tg.F("butter", tg.B(42, 65537)),
+		tg.F("syrup", tg.B(99, 99)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	assert.Equal(t, 2, len(patchPlan.Cmds))
 	for i := 0; i < len(patchPlan.Cmds); i++ {
 		_, isRename := patchPlan.Cmds[0].(*Transfer)
 		assert.T(t, isRename)
 	}
-	
+
 	// Now flip
 	patchPlan = NewPatchPlan(dstStore, srcStore)
 	assert.Equal(t, 2, len(patchPlan.Cmds))
@@ -350,33 +351,33 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 // already contains a file at that location.
 func TestPatchSimpleDirFileConflict(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.D("gloo", 
-						tg.F("bloo", tg.B(99, 99)), 
-						tg.D("groo", 
-							tg.D("snoo", 
-								tg.F("bar", tg.B(42, 65537))))))
-	
+	treeSpec := tg.D("foo",
+		tg.D("gloo",
+			tg.F("bloo", tg.B(99, 99)),
+			tg.D("groo",
+				tg.D("snoo",
+					tg.F("bar", tg.B(42, 65537))))))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-					tg.F("gloo", tg.B(99, 999)))
-	
+	treeSpec = tg.D("foo",
+		tg.F("gloo", tg.B(99, 999)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	assert.Equal(t, 3, len(patchPlan.Cmds))
 	for i, cmd := range patchPlan.Cmds {
 		switch i {
@@ -399,10 +400,10 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 func assertNoRelocs(t *testing.T, path string) {
 	d, err := os.Open(path)
 	assert.T(t, err == nil)
-	
+
 	names, err := d.Readdirnames(0)
 	assert.T(t, err == nil)
-	
+
 	for _, name := range names {
 		assert.T(t, !strings.HasPrefix(name, "_reloc"))
 	}
@@ -414,30 +415,30 @@ func assertNoRelocs(t *testing.T, path string) {
 // already contains a file at that location.
 func TestPatchRelocConflict(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.D("gloo", 
-						tg.F("bloo", tg.B(99, 99)), 
-						tg.D("groo", 
-							tg.D("snoo", 
-								tg.F("bar", tg.B(42, 65537))))))
-	
+	treeSpec := tg.D("foo",
+		tg.D("gloo",
+			tg.F("bloo", tg.B(99, 99)),
+			tg.D("groo",
+				tg.D("snoo",
+					tg.F("bar", tg.B(42, 65537))))))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-					tg.F("gloo", tg.B(99, 99)))
-	
+	treeSpec = tg.D("foo",
+		tg.F("gloo", tg.B(99, 99)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	assert.Equal(t, 3, len(patchPlan.Cmds))
 	for i, cmd := range patchPlan.Cmds {
 		switch i {
@@ -456,222 +457,221 @@ func TestPatchRelocConflict(t *testing.T) {
 			assert.Equal(t, "764b5f659f70e69d4a87fe6ed138af40be36c514", copy.SrcFile.Strong())
 		}
 	}
-	
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	assertNoRelocs(t, dstpath)
 }
 
-
 func TestPatchDepConflict(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.D("gloo", 
-						tg.F("bloo", tg.B(99, 8192), tg.B(100, 10000)), 
-						tg.D("groo", 
-							tg.D("snoo", 
-								tg.F("bar", tg.B(42, 65537))))))
-	
+	treeSpec := tg.D("foo",
+		tg.D("gloo",
+			tg.F("bloo", tg.B(99, 8192), tg.B(100, 10000)),
+			tg.D("groo",
+				tg.D("snoo",
+					tg.F("bar", tg.B(42, 65537))))))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-					tg.F("gloo", tg.B(99, 10000)))
-	
+	treeSpec = tg.D("foo",
+		tg.F("gloo", tg.B(99, 10000)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	assertNoRelocs(t, dstpath)
 }
 
 func TestPatchWeakCollision(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.F("bar", tg.B(6806, 65536)))
-	
+	treeSpec := tg.D("foo",
+		tg.F("bar", tg.B(6806, 65536)))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-					tg.F("bar", tg.B(9869, 65536)))
-	
+	treeSpec = tg.D("foo",
+		tg.F("bar", tg.B(9869, 65536)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	// Src and dst blocks have same weak checksum
 	assert.Equal(t,
 		srcStore.Root().SubDirs[0].Files[0].Blocks[0].Weak(),
 		dstStore.Root().SubDirs[0].Files[0].Blocks[0].Weak())
-	
+
 	// Src and dst blocks have different strong checksum
 	assert.Tf(t, srcStore.Root().Strong() != dstStore.Root().Strong(),
 		"wtf: %v == %v", srcStore.Root().Strong(), dstStore.Root().Strong())
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	errorChan := make(chan os.Error)
-	go func(){
+	go func() {
 		srcDir := fs.IndexDir(srcpath, errorChan)
 		dstDir := fs.IndexDir(dstpath, errorChan)
 		assert.Equal(t, srcDir.Strong(), dstDir.Strong())
 		close(errorChan)
 	}()
-	for err := range(errorChan) {
+	for err := range errorChan {
 		assert.Tf(t, err == nil, "%v", err)
 	}
 }
 
 func TestPatchRenameScope(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.F("bar", tg.B(6806, 65536)),
-					tg.F("baz", tg.B(6806, 65536)))
-	
+	treeSpec := tg.D("foo",
+		tg.F("bar", tg.B(6806, 65536)),
+		tg.F("baz", tg.B(6806, 65536)))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-					tg.F("baz", tg.B(6806, 65536)),
-					tg.F("blop", tg.B(6806, 65536)))
-	
+	treeSpec = tg.D("foo",
+		tg.F("baz", tg.B(6806, 65536)),
+		tg.F("blop", tg.B(6806, 65536)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	errorChan := make(chan os.Error)
-	go func(){
+	go func() {
 		srcDir := fs.IndexDir(srcpath, errorChan)
 		dstDir := fs.IndexDir(dstpath, errorChan)
 		assert.Equal(t, srcDir.Strong(), dstDir.Strong())
 		close(errorChan)
 	}()
-	for err := range(errorChan) {
+	for err := range errorChan {
 		assert.Tf(t, err == nil, "%v", err)
 	}
 }
 
 func TestPatchPreserveKeeps(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-					tg.F("bar", tg.B(6806, 65536)),
-					tg.F("blop", tg.B(6806, 65536)))
-	
+	treeSpec := tg.D("foo",
+		tg.F("bar", tg.B(6806, 65536)),
+		tg.F("blop", tg.B(6806, 65536)))
+
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-					tg.F("baz", tg.B(6806, 65536)),
-					tg.F("blop", tg.B(6806, 65536)))
-	
+	treeSpec = tg.D("foo",
+		tg.F("baz", tg.B(6806, 65536)),
+		tg.F("blop", tg.B(6806, 65536)))
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
-//	printPlan(patchPlan)
-	
+	//	printPlan(patchPlan)
+
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
-	
+
 	info, err := os.Stat(filepath.Join(dstpath, "foo", "bar"))
 	assert.T(t, err == nil && info != nil)
-	
+
 	info, err = os.Stat(filepath.Join(dstpath, "foo", "blop"))
 	assert.T(t, err == nil && info != nil)
 }
 
 func TestClean(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-		tg.D("bar", 
-			tg.D("aleph", 
+	treeSpec := tg.D("foo",
+		tg.D("bar",
+			tg.D("aleph",
 				tg.F("A", tg.B(42, 65537)),
 				tg.F("a", tg.B(42, 65537)))))
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-		tg.D("bar", 
-			tg.D("aleph", 
+	treeSpec = tg.D("foo",
+		tg.D("bar",
+			tg.D("aleph",
 				tg.F("A", tg.B(42, 65537)),
 				tg.F("a", tg.B(42, 65537))),
-			tg.D("beth", 
+			tg.D("beth",
 				tg.F("B", tg.B(43, 65537)),
 				tg.F("b", tg.B(43, 65537))),
 			tg.D("jimmy",
 				tg.F("G", tg.B(44, 65537)),
 				tg.F("g", tg.B(44, 65537)))),
-		tg.D("baz", 
-			tg.D("uno", 
+		tg.D("baz",
+			tg.D("uno",
 				tg.F("1", tg.B(1, 65537)),
 				tg.F("I", tg.B(1, 65537))),
-			tg.D("dos", 
+			tg.D("dos",
 				tg.F("2", tg.B(11, 65537)),
 				tg.F("II", tg.B(11, 65537))),
-			tg.D("tres", 
+			tg.D("tres",
 				tg.F("3", tg.B(111, 65537)),
 				tg.F("III", tg.B(111, 65537)))))
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	onePath := dstStore.Resolve(filepath.Join("foo", "baz", "uno", "1"))
 	_, err = os.Stat(onePath)
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	errors := make(chan os.Error)
-	go func(){
+	go func() {
 		patchPlan.Clean(errors)
 		close(errors)
 	}()
 	for err := range errors {
 		assert.Tf(t, err == nil, "%v", err)
 	}
-	
+
 	onePath = dstStore.Resolve(filepath.Join("foo", "baz", "uno", "1"))
 	_, err = os.Stat(onePath)
 	assert.Tf(t, err != nil, "%v", err)
@@ -679,9 +679,9 @@ func TestClean(t *testing.T) {
 
 func TestSetModeNew(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-		tg.D("bar", 
-			tg.D("aleph", 
+	treeSpec := tg.D("foo",
+		tg.D("bar",
+			tg.D("aleph",
 				tg.F("A", tg.B(42, 65537)),
 				tg.F("a", tg.B(42, 65537)))))
 	srcpath := treegen.TestTree(t, treeSpec)
@@ -690,41 +690,41 @@ func TestSetModeNew(t *testing.T) {
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
 	treeSpec = tg.D("foo")
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	errors := make(chan os.Error)
-	go func(){
+	go func() {
 		patchPlan.Clean(errors)
 		close(errors)
 	}()
 	for err := range errors {
 		assert.Tf(t, err == nil, "%v", err)
 	}
-	
+
 	errors = make(chan os.Error)
-	go func(){
+	go func() {
 		patchPlan.SetMode(errors)
 		close(errors)
 	}()
 	for err := range errors {
 		assert.Tf(t, err == nil, "%v", err)
 	}
-	
+
 	fileinfo, err := os.Stat(filepath.Join(dstpath, "foo", "bar", "aleph", "A"))
 	assert.T(t, fileinfo != nil)
 	assert.Equal(t, uint32(0765), fileinfo.Permission())
-	
+
 	fileinfo, err = os.Stat(filepath.Join(dstpath, "foo", "bar"))
 	assert.T(t, fileinfo != nil)
 	assert.Equal(t, uint32(0711), fileinfo.Permission())
@@ -732,9 +732,9 @@ func TestSetModeNew(t *testing.T) {
 
 func TestSetModeOverwrite(t *testing.T) {
 	tg := treegen.New()
-	treeSpec := tg.D("foo", 
-		tg.D("bar", 
-			tg.D("aleph", 
+	treeSpec := tg.D("foo",
+		tg.D("bar",
+			tg.D("aleph",
 				tg.F("A", tg.B(42, 65537)),
 				tg.F("a", tg.B(42, 65537)))))
 	srcpath := treegen.TestTree(t, treeSpec)
@@ -743,11 +743,11 @@ func TestSetModeOverwrite(t *testing.T) {
 	defer os.RemoveAll(srcpath)
 	srcStore, err := fs.NewLocalStore(srcpath)
 	assert.T(t, err == nil)
-	
+
 	tg = treegen.New()
-	treeSpec = tg.D("foo", 
-		tg.D("bar", 
-			tg.D("aleph", 
+	treeSpec = tg.D("foo",
+		tg.D("bar",
+			tg.D("aleph",
 				tg.F("A", tg.B(42, 65537)),
 				tg.F("a", tg.B(42, 65537)))))
 	dstpath := treegen.TestTree(t, treeSpec)
@@ -756,38 +756,35 @@ func TestSetModeOverwrite(t *testing.T) {
 	defer os.RemoveAll(dstpath)
 	dstStore, err := fs.NewLocalStore(dstpath)
 	assert.T(t, err == nil)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil, "%v %v", failedCmd, err)
 	assert.Tf(t, err == nil, "%v", err)
-	
+
 	errors := make(chan os.Error)
-	go func(){
+	go func() {
 		patchPlan.Clean(errors)
 		close(errors)
 	}()
 	for err := range errors {
 		assert.Tf(t, err == nil, "%v", err)
 	}
-	
+
 	errors = make(chan os.Error)
-	go func(){
+	go func() {
 		patchPlan.SetMode(errors)
 		close(errors)
 	}()
 	for err := range errors {
 		assert.Tf(t, err == nil, "%v", err)
 	}
-	
+
 	fileinfo, err := os.Stat(filepath.Join(dstpath, "foo", "bar", "aleph", "A"))
 	assert.T(t, fileinfo != nil)
 	assert.Equal(t, uint32(0765), fileinfo.Permission())
-	
+
 	fileinfo, err = os.Stat(filepath.Join(dstpath, "foo", "bar"))
 	assert.T(t, fileinfo != nil)
 	assert.Equal(t, uint32(0711), fileinfo.Permission())
 }
-
-
-

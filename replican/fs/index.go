@@ -1,4 +1,3 @@
-
 package fs
 
 import (
@@ -26,34 +25,34 @@ func (weak *WeakChecksum) Reset() {
 func (weak *WeakChecksum) Write(buf []byte) {
 	for i := 0; i < len(buf); i++ {
 		b := int(buf[i])
-		weak.a += b;
-		weak.b += (len(buf) - i) * b;
+		weak.a += b
+		weak.b += (len(buf) - i) * b
 	}
 }
 
 // Get the current weak checksum value
 func (weak *WeakChecksum) Get() int {
-	return weak.b << 16 | weak.a;
+	return weak.b<<16 | weak.a
 }
 
 // Roll the checksum forward by one byte
 func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
-    weak.a -= int(removedByte) - int(newByte);
-    weak.b -= int(removedByte) * BLOCKSIZE - weak.a;
+	weak.a -= int(removedByte) - int(newByte)
+	weak.b -= int(removedByte)*BLOCKSIZE - weak.a
 }
 
 // Visitor used to traverse a directory with filepath.Walk in IndexDir
 type indexVisitor struct {
-	root *Dir
+	root   *Dir
 	dirMap map[string]*Dir
-	errors chan<-os.Error
+	errors chan<- os.Error
 }
 
 // Initialize the IndexDir visitor
 func newVisitor(path string) *indexVisitor {
 	path = filepath.Clean(path)
 	path = strings.TrimRight(path, "/\\")
-	
+
 	visitor := new(indexVisitor)
 	visitor.errors = make(chan os.Error)
 	visitor.dirMap = make(map[string]*Dir)
@@ -61,7 +60,7 @@ func newVisitor(path string) *indexVisitor {
 		visitor.VisitDir(path, rootInfo)
 		visitor.root = visitor.dirMap[path]
 	}
-		
+
 	return visitor
 }
 
@@ -72,19 +71,19 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 	if !hasDir {
 		dir = new(Dir)
 		visitor.dirMap[path] = dir
-		
+
 		dirname, basename := filepath.Split(path)
 		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
-		
+
 		dir.name = basename
 		dir.mode = f.Mode
 		dir.parent = visitor.dirMap[dirname]
-		
+
 		if dir.parent != nil {
 			dir.parent.SubDirs = append(dir.parent.SubDirs, dir)
 		}
 	}
-	
+
 	return true
 }
 
@@ -96,7 +95,7 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 		dirpath = filepath.Clean(dirpath)
 		dirinfo, _ := os.Stat(dirpath)
 		visitor.VisitDir(dirpath, dirinfo)
-		
+
 		var hasParent bool
 		if file.parent, hasParent = visitor.dirMap[dirpath]; hasParent {
 			file.parent.Files = append(file.parent.Files, file)
@@ -105,28 +104,28 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 			visitor.errors <- os.NewError("cannot locate parent directory")
 		}
 	}
-	
+
 	if err != nil && visitor.errors != nil {
 		visitor.errors <- err
 	}
 }
 
 // Build a hierarchical tree model representing a directory's contents
-func IndexDir(path string, errors chan<-os.Error) *Dir {
+func IndexDir(path string, errors chan<- os.Error) *Dir {
 	control := make(chan bool)
 	visitor := newVisitor(path)
 	visitor.errors = errors
-	
-	go func(){
+
+	go func() {
 		filepath.Walk(path, visitor, errors)
 		close(control)
 	}()
 	<-control
-	
+
 	if visitor.root != nil {
 		visitor.root.Strong()
 	}
-	
+
 	return visitor.root
 }
 
@@ -134,35 +133,35 @@ func IndexDir(path string, errors chan<-os.Error) *Dir {
 func IndexFile(path string) (file *File, err os.Error) {
 	var f *os.File
 	var buf [BLOCKSIZE]byte
-	
+
 	stat, err := os.Stat(path)
 	if stat == nil {
 		return nil, err
 	} else if !stat.IsRegular() {
 		return nil, os.NewError(fmt.Sprintf("%s: not a regular file", path))
 	}
-	
+
 	f, err = os.Open(path)
 	if f == nil {
 		return nil, err
 	}
 	defer f.Close()
-	
+
 	file = new(File)
 	_, basename := filepath.Split(path)
 	file.name = basename
 	file.mode = stat.Mode
-	
+
 	if fileInfo, err := f.Stat(); fileInfo != nil {
 		file.Size = fileInfo.Size
 	} else {
 		return nil, err
 	}
-	
+
 	var block *Block
 	sha1 := sha1.New()
 	blockNum := 0
-	
+
 	for {
 		switch rd, err := f.Read(buf[:]); true {
 		case rd < 0:
@@ -175,15 +174,15 @@ func IndexFile(path string) (file *File, err os.Error) {
 			block = IndexBlock(buf[0:rd])
 			block.position = blockNum
 			file.Blocks = append(file.Blocks, block)
-			
+
 			// update file hash
 			sha1.Write(buf[0:rd])
-			
+
 			// Increment block counter
 			blockNum++
 		}
 	}
-	
+
 	return nil, nil
 }
 
@@ -203,22 +202,22 @@ func StrongChecksum(buf []byte) string {
 // Model a block with weak and strong checksums.
 func IndexBlock(buf []byte) (block *Block) {
 	block = new(Block)
-	
+
 	var weak = new(WeakChecksum)
 	weak.Write(buf)
 	block.weak = weak.Get()
-	
+
 	block.strong = StrongChecksum(buf)
-	
+
 	return block
 }
 
 // Represent a flat mapping between checksum and Nodes in a hierarchical index.
 type BlockIndex struct {
-	weakBlocks map[int]*Block 
+	weakBlocks   map[int]*Block
 	strongBlocks map[string]*Block
-	strongFiles map[string]*File
-	strongDirs map[string]*Dir
+	strongFiles  map[string]*File
+	strongDirs   map[string]*Dir
 }
 
 // Get the Block with matching weak checksum.
@@ -232,11 +231,15 @@ func (index *BlockIndex) WeakBlock(weak int) (block *Block, has bool) {
 // Boolean return value indicates if a match was found.
 func (index *BlockIndex) StrongFsNode(strong string) (FsNode, bool) {
 	file, has := index.strongFiles[strong]
-	if has { return file, true }
-	
+	if has {
+		return file, true
+	}
+
 	dir, has := index.strongDirs[strong]
-	if has { return dir, true }
-	
+	if has {
+		return dir, true
+	}
+
 	return nil, false
 }
 
@@ -269,7 +272,7 @@ func IndexBlocks(node Node) (index *BlockIndex) {
 	index.strongBlocks = make(map[string]*Block)
 	index.strongFiles = make(map[string]*File)
 	index.strongDirs = make(map[string]*Dir)
-	
+
 	Walk(node, func(current Node) bool {
 		switch t := current.(type) {
 		case *Block:
@@ -284,9 +287,6 @@ func IndexBlocks(node Node) (index *BlockIndex) {
 		}
 		return true
 	})
-	
+
 	return index
 }
-
-
-

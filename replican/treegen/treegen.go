@@ -1,4 +1,3 @@
-
 /*
 
 Let's invent a mini DSL for generating test data. It will look like:
@@ -37,24 +36,24 @@ import (
 	"rand"
 	"syscall"
 	"testing"
-	
+
 	"github.com/bmizerany/assert"
 )
 
-type Generated interface {}
+type Generated interface{}
 
 type Dir struct {
-	Name string
+	Name     string
 	Contents []Generated
 }
 
 type File struct {
-	Name string
+	Name     string
 	Contents []Generated
 }
 
 type Bytes struct {
-	Seed int64
+	Seed   int64
 	Length int64
 }
 
@@ -63,32 +62,32 @@ type TreeGen struct {
 }
 
 func New() *TreeGen {
-	return &TreeGen{ rand: rand.New(rand.NewSource(42)) }
+	return &TreeGen{rand: rand.New(rand.NewSource(42))}
 }
 
 func isIllegal(c byte) bool {
 	if syscall.OS == "windows" {
 		switch c {
 		case '/':
-				return true
+			return true
 		case '?':
-				return true
+			return true
 		case '<':
-				return true
+			return true
 		case '>':
-				return true
+			return true
 		case '\\':
-				return true
+			return true
 		case ':':
-				return true
+			return true
 		case '*':
-				return true
+			return true
 		case '|':
-				return true
+			return true
 		case '"':
-				return true
+			return true
 		default:
-				return false
+			return false
 		}
 	}
 	return c == '/'
@@ -97,17 +96,18 @@ func isIllegal(c byte) bool {
 func (treeGen *TreeGen) randomName() string {
 	len := treeGen.rand.Intn(17) + 3
 	buf := &bytes.Buffer{}
-	
+
 	rndByte := func() byte {
 		return byte(0x20 + treeGen.rand.Intn(0x7e-0x20))
 	}
-	
+
 	var nextByte byte
 	for i := 0; i < len; i++ {
-		for nextByte = rndByte(); isIllegal(nextByte); nextByte = rndByte() {}
+		for nextByte = rndByte(); isIllegal(nextByte); nextByte = rndByte() {
+		}
 		buf.WriteByte(nextByte)
 	}
-	
+
 	return string(buf.Bytes())
 }
 
@@ -134,14 +134,14 @@ const PREFIX string = "treegen"
 func TestTree(t *testing.T, g Generated) string {
 	tempdir, err := ioutil.TempDir("", PREFIX)
 	assert.Tf(t, err == nil, "Fail to create temp dir")
-	
+
 	err = Fab(tempdir, g)
 	assert.Tf(t, err == nil, "Fail to fab tree: %v", err)
-	
+
 	return tempdir
 }
 
-func Fab(parent string, g Generated) (os.Error) {
+func Fab(parent string, g Generated) os.Error {
 	if d, isD := g.(*Dir); isD {
 		return d.fab(parent)
 	} else if f, isF := g.(*File); isF {
@@ -149,79 +149,85 @@ func Fab(parent string, g Generated) (os.Error) {
 	} else if b, isB := g.(*Bytes); isB {
 		return b.fab(parent)
 	}
-	
+
 	return os.NewError(fmt.Sprintf("WTF is this: %v?", g))
 }
 
-func (d *Dir) fab(parent string) (os.Error) {
+func (d *Dir) fab(parent string) os.Error {
 	name := d.Name
-	
+
 	path := filepath.Join(parent, name)
 	err := os.Mkdir(path, 0777)
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	switch len(d.Contents) {
 	case 0:
 		return nil
 	case 1:
 		return fabEntries(path, d.Contents[0], []Generated{})
 	}
-	
+
 	return fabEntries(path, d.Contents[0], d.Contents[1:])
 }
 
-func (f *File) fab(parent string) (os.Error) {
+func (f *File) fab(parent string) os.Error {
 	name := f.Name
-	
+
 	path := filepath.Join(parent, name)
 	fh, err := os.Create(path)
-	if fh == nil { return err }
+	if fh == nil {
+		return err
+	}
 	fh.Close()
-	
+
 	switch len(f.Contents) {
 	case 0:
 		return nil
 	case 1:
 		return fabEntries(path, f.Contents[0], []Generated{})
 	}
-	
+
 	return fabEntries(path, f.Contents[0], f.Contents[1:])
 }
 
 const CHUNKSIZE int = 8192
 
-func (b *Bytes) fab(parent string) (os.Error) {
-	fh, err := os.OpenFile(parent, os.O_RDWR | os.O_APPEND, 0644)
-	if fh == nil { return err }
+func (b *Bytes) fab(parent string) os.Error {
+	fh, err := os.OpenFile(parent, os.O_RDWR|os.O_APPEND, 0644)
+	if fh == nil {
+		return err
+	}
 	defer fh.Close()
-	
+
 	rnd := rand.New(rand.NewSource(b.Seed))
-	
+
 	for toWrite := b.Length; toWrite > 0; {
 		buf := &bytes.Buffer{}
-		
+
 		for i := 0; i < CHUNKSIZE && toWrite > 0; i++ {
 			buf.WriteByte(byte(rnd.Int()))
-			toWrite--;
+			toWrite--
 		}
-		
+
 		_, err = buf.WriteTo(fh)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 	}
-	
+
 	return nil
 }
 
-func fabEntries(path string, first Generated, rest []Generated) (os.Error) {
+func fabEntries(path string, first Generated, rest []Generated) os.Error {
 	if err := Fab(path, first); err != nil {
 		return err
 	}
-	
-	if (len(rest) == 0) {
+
+	if len(rest) == 0 {
 		return nil
 	}
-	
+
 	return fabEntries(path, rest[0], rest[1:])
 }
-
-
