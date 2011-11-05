@@ -173,6 +173,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 			// Update block hashes
 			block = IndexBlock(buf[0:rd])
 			block.position = blockNum
+			block.parent = file
 			file.Blocks = append(file.Blocks, block)
 
 			// update file hash

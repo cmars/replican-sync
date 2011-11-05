@@ -283,3 +283,55 @@ func TestGobbable(t *testing.T) {
 	assert.T(t, node.Parent() != nil)
 	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
 }
+
+func TestParentRefs(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo",
+		tg.D("bar",
+			tg.D("aleph",
+				tg.F("A", tg.B(42, 65537)),
+				tg.F("a", tg.B(42, 65537))),
+			tg.D("beth",
+				tg.F("B", tg.B(43, 65537)),
+				tg.F("b", tg.B(43, 65537))),
+			tg.D("jimmy",
+				tg.F("G", tg.B(44, 65537)),
+				tg.F("g", tg.B(44, 65537)))),
+		tg.D("baz",
+			tg.D("uno",
+				tg.F("1", tg.B(1, 65537)),
+				tg.F("I", tg.B(1, 65537))),
+			tg.D("dos",
+				tg.F("2", tg.B(11, 65537)),
+				tg.F("II", tg.B(11, 65537))),
+			tg.D("tres",
+				tg.F("3", tg.B(111, 65537)),
+				tg.F("III", tg.B(111, 65537)))))
+
+	path := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(path)
+
+	foo := IndexDir(filepath.Join(path, "foo"), nil)
+	rootCount := 0
+	Walk(foo, func(node Node) bool {
+		switch node.(type) {
+		case *Dir:
+			dir := node.(*Dir)
+			if dir.IsRoot() {
+				rootCount++
+			}
+			break
+		case *File:
+			file := node.(*File)
+			assert.T(t, file.parent != nil)
+			break
+		case *Block:
+			block := node.(*Block)
+			assert.T(t, block.parent != nil)
+			break
+		}
+		return true
+	})
+	
+	assert.Equal(t, 1, rootCount)
+}
