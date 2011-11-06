@@ -10,86 +10,6 @@ import (
 	"github.com/cmars/replican-sync/replican/fs"
 )
 
-func PatchFile(src string, dst string) os.Error {
-	match, err := Match(src, dst)
-	if match == nil {
-		return err
-	}
-
-	var buf [fs.BLOCKSIZE]byte
-
-	_, dstname := filepath.Split(dst)
-	newdstF, err := ioutil.TempFile("", dstname)
-	if newdstF == nil {
-		return err
-	}
-	defer newdstF.Close()
-
-	dstF, err := os.Open(dst)
-	if dstF == nil {
-		return err
-	}
-	defer dstF.Close()
-
-	// Write blocks from dst that we already have
-DST_2_NEWDST:
-	for _, blockMatch := range match.BlockMatches {
-		dstF.Seek(blockMatch.DstOffset, 0)
-		newdstF.Seek(blockMatch.DstOffset, 0)
-
-		switch rd, err := dstF.Read(buf[:]); true {
-		case rd < 0:
-			return err
-
-		case rd == 0:
-			break DST_2_NEWDST
-
-		case rd > 0:
-			newdstF.Write(buf[:rd])
-		}
-	}
-
-	srcF, err := os.Open(src)
-	if srcF == nil {
-		return err
-	}
-	defer srcF.Close()
-
-	// Fill in the rest from src
-SRC_2_NEWDST:
-	for _, notMatch := range match.NotMatched() {
-		srcF.Seek(notMatch.From, 0)
-		newdstF.Seek(notMatch.From, 0)
-
-		for toRd := notMatch.Size(); toRd > 0; {
-			var rd int
-			switch rd, err := srcF.Read(buf[:]); true {
-			case rd < 0:
-				return err
-
-			case rd == 0:
-				break SRC_2_NEWDST
-
-			case rd > 0:
-				newdstF.Write(buf[:rd])
-			}
-
-			toRd -= int64(rd)
-		}
-	}
-
-	newdst := newdstF.Name()
-
-	newdstF.Close()
-	dstF.Close()
-
-	os.Remove(dst)
-
-	err = fs.Move(newdst, dst)
-
-	return err
-}
-
 type PathRef interface {
 	Resolve() string
 }
@@ -101,7 +21,7 @@ func (absPath AbsolutePath) Resolve() string {
 }
 
 type LocalPath struct {
-	LocalStore *fs.LocalStore
+	LocalStore fs.LocalStore
 	RelPath    string
 }
 
@@ -242,28 +162,25 @@ type LocalTemp struct {
 }
 
 func (localTemp *LocalTemp) String() string {
-	return fmt.Sprintf("Create a temporary file for %s, size=%d bytes", localTemp.Path, localTemp.Size)
+	return fmt.Sprintf("Create a temporary file for %s, size=%d bytes", localTemp.Path.Resolve(), localTemp.Size)
 }
 
 func (localTemp *LocalTemp) Exec(srcStore fs.BlockStore) (err os.Error) {
 	localTemp.localFh, err = os.Open(localTemp.Path.Resolve())
-	if localTemp.localFh == nil {
+	if err != nil {
 		return err
 	}
 
 	localDir, localName := filepath.Split(localTemp.Path.Resolve())
 
 	localTemp.tempFh, err = ioutil.TempFile(localDir, localName)
-	if localTemp.tempFh == nil {
-		return err
-	}
-
-	err = localTemp.tempFh.Truncate(localTemp.Size)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	err = localTemp.tempFh.Truncate(localTemp.Size)
+
+	return err
 }
 
 // Replace the local file with its temporary
@@ -272,7 +189,7 @@ type ReplaceWithTemp struct {
 }
 
 func (rwt *ReplaceWithTemp) String() string {
-	return fmt.Sprintf("Replace %s with the temporary backup", rwt.Temp.Path)
+	return fmt.Sprintf("Replace %s with the temporary backup", rwt.Temp.Path.Resolve())
 }
 
 func (rwt *ReplaceWithTemp) Exec(srcStore fs.BlockStore) (err os.Error) {
@@ -306,7 +223,7 @@ type LocalTempCopy struct {
 
 func (ltc *LocalTempCopy) String() string {
 	return fmt.Sprintf("Copy %d bytes from offset %d in target file %s to offset %d in temporary file",
-		ltc.Length, ltc.LocalOffset, ltc.Temp.Path, ltc.TempOffset)
+		ltc.Length, ltc.LocalOffset, ltc.Temp.Path.Resolve(), ltc.TempOffset)
 }
 
 func (ltc *LocalTempCopy) Exec(srcStore fs.BlockStore) (err os.Error) {
@@ -375,10 +292,10 @@ type PatchPlan struct {
 	dstFileUnmatch map[string]*fs.File
 
 	srcStore fs.BlockStore
-	dstStore *fs.LocalStore
+	dstStore fs.LocalStore
 }
 
-func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
+func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 	plan := &PatchPlan{srcStore: srcStore, dstStore: dstStore}
 
 	plan.dstFileUnmatch = make(map[string]*fs.File)
@@ -481,6 +398,50 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore *fs.LocalStore) *PatchPlan {
 	return plan
 }
 
+func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error {
+	match, err := MatchIndex(plan.srcStore.Index(), plan.dstStore.Resolve(dstPath))
+	if match == nil {
+		return err
+	}
+	match.SrcSize = srcFile.Size
+
+	// Create a local temporary file in which to effect changes
+	localTemp := &LocalTemp{
+		Path: &LocalPath{
+			LocalStore: plan.dstStore,
+			RelPath:    dstPath},
+		Size: match.SrcSize}
+	plan.Cmds = append(plan.Cmds, localTemp)
+
+	for _, blockMatch := range match.BlockMatches {
+		// TODO: math/imath
+		length := srcFile.Size - blockMatch.SrcBlock.Offset()
+		if length > int64(fs.BLOCKSIZE) {
+			length = int64(fs.BLOCKSIZE)
+		}
+
+		plan.Cmds = append(plan.Cmds, &LocalTempCopy{
+			Temp:        localTemp,
+			LocalOffset: blockMatch.SrcBlock.Offset(),
+			TempOffset:  blockMatch.DstOffset,
+			Length:      length})
+	}
+
+	for _, srcRange := range match.NotMatched() {
+		plan.Cmds = append(plan.Cmds, &SrcTempCopy{
+			Temp:       localTemp,
+			SrcStrong:  srcFile.Strong(),
+			SrcOffset:  srcRange.From,
+			TempOffset: srcRange.From,
+			Length:     srcRange.To - srcRange.From})
+	}
+
+	// Replace dst file with temp
+	plan.Cmds = append(plan.Cmds, &ReplaceWithTemp{Temp: localTemp})
+
+	return nil
+}
+
 func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 	conflicts := []*Conflict{}
 	for _, cmd := range plan.Cmds {
@@ -543,40 +504,16 @@ func (plan *PatchPlan) String() string {
 	return string(buf.Bytes())
 }
 
-func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error {
-	match, err := MatchIndex(plan.srcStore.Index(), plan.dstStore.Resolve(dstPath))
-	if match == nil {
-		return err
-	}
-	match.SrcSize = srcFile.Size
-
-	// Create a local temporary file in which to effect changes
-	localTemp := &LocalTemp{
-		Path: &LocalPath{
-			LocalStore: plan.dstStore,
-			RelPath:    dstPath},
-		Size: match.SrcSize}
-	plan.Cmds = append(plan.Cmds, localTemp)
-
-	for _, blockMatch := range match.BlockMatches {
-		plan.Cmds = append(plan.Cmds, &LocalTempCopy{
-			Temp:        localTemp,
-			LocalOffset: blockMatch.SrcBlock.Offset(),
-			TempOffset:  blockMatch.DstOffset,
-			Length:      int64(fs.BLOCKSIZE)})
+func Patch(src string, dst string) (*PatchPlan, os.Error) {
+	srcStore, err := fs.NewLocalStore(src)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, srcRange := range match.NotMatched() {
-		plan.Cmds = append(plan.Cmds, &SrcTempCopy{
-			Temp:       localTemp,
-			SrcStrong:  srcFile.Strong(),
-			SrcOffset:  srcRange.From,
-			TempOffset: srcRange.From,
-			Length:     srcRange.To - srcRange.From})
+	dstStore, err := fs.NewLocalStore(dst)
+	if err != nil {
+		return nil, err
 	}
 
-	// Replace dst file with temp
-	plan.Cmds = append(plan.Cmds, &ReplaceWithTemp{Temp: localTemp})
-
-	return nil
+	return NewPatchPlan(srcStore, dstStore), nil
 }

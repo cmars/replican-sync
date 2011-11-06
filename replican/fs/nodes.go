@@ -15,19 +15,19 @@ const BLOCKSIZE int = 8192
 // and also blocks within the files.
 type Node interface {
 
-	// Test if this node is at the root of the tree.
-	IsRoot() bool
-
 	// Get the strong checksum of a node.
 	Strong() string
 
 	// Get the node that contains this node in the hierarchical index.
-	Parent() FsNode
+	Parent() Node
 }
 
 // FsNodes are members of a hierarchical index that map directly onto the filesystem:
 // files and directories.
 type FsNode interface {
+
+	// Test if this node is at the root of the tree.
+	IsRoot() bool
 
 	// FsNode extends the concept of Node.
 	Node
@@ -37,13 +37,15 @@ type FsNode interface {
 
 	// All FsNodes have permissions
 	Mode() uint32
+
+	fsParent() FsNode
 }
 
 // Given a filesystem node, calculate the relative path string to it from the root node.
 func RelPath(item FsNode) string {
 	parts := []string{}
 
-	for fsNode := item; !fsNode.IsRoot(); fsNode = fsNode.Parent() {
+	for fsNode := item; !fsNode.IsRoot(); fsNode = fsNode.fsParent() {
 		parts = append([]string{fsNode.Name()}, parts...)
 	}
 
@@ -74,7 +76,9 @@ func (block *Block) IsRoot() bool { return false }
 
 func (block *Block) Strong() string { return block.strong }
 
-func (block *Block) Parent() FsNode { return block.parent }
+func (block *Block) Parent() Node { return block.parent }
+
+func (block *Block) fsParent() FsNode { return block.parent }
 
 // Represent a file in a hierarchical tree model.
 type File struct {
@@ -92,11 +96,13 @@ func (file *File) Name() string { return file.name }
 func (file *File) Mode() uint32 { return file.mode }
 
 // For our purposes, files are never considered root nodes.
-func (file *File) IsRoot() bool { return false }
+func (file *File) IsRoot() bool { return file.parent == nil }
 
 func (file *File) Strong() string { return file.strong }
 
-func (file *File) Parent() FsNode { return file.parent }
+func (file *File) Parent() Node { return file.parent }
+
+func (file *File) fsParent() FsNode { return file.parent }
 
 // Represent a directory in a hierarchical tree model.
 type Dir struct {
@@ -132,7 +138,9 @@ func (dir *Dir) calcStrong() string {
 	return toHexString(sha1)
 }
 
-func (dir *Dir) Parent() FsNode { return dir.parent }
+func (dir *Dir) Parent() Node { return dir.parent }
+
+func (dir *Dir) fsParent() FsNode { return dir.parent }
 
 // Represent the directory's distinct deep contents as a byte array.
 // Inspired by skimming over git internals.

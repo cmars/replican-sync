@@ -14,7 +14,7 @@ import (
 type BlockStore interface {
 
 	// Get the root hierarchical index node
-	Root() *Dir
+	Root() FsNode
 
 	Index() *BlockIndex
 
@@ -26,44 +26,88 @@ type BlockStore interface {
 }
 
 // A local file implementation of BlockStore
-type LocalStore struct {
+type LocalStore interface {
+	BlockStore
+
+	RelPath(fullpath string) (relpath string)
+
+	Relocate(fullpath string) (relocFullpath string, err os.Error)
+
+	Resolve(relpath string) string
+
+	RootPath() string
+
+	reindex() os.Error
+}
+
+type localBase struct {
 	rootPath string
-	root     *Dir
 	index    *BlockIndex
 	relocs   map[string]string
 }
 
-func NewLocalStore(rootPath string) (*LocalStore, os.Error) {
-	local := &LocalStore{rootPath: rootPath}
-	local.relocs = make(map[string]string)
+type LocalDirStore struct {
+	*localBase
+	dir *Dir
+}
 
-	if err := local.reindex(); local.root == nil {
+type LocalFileStore struct {
+	*localBase
+	file *File
+}
+
+func NewLocalStore(rootPath string) (local LocalStore, err os.Error) {
+	rootInfo, err := os.Stat(rootPath)
+	if err != nil {
+		return nil, err
+	}
+
+	localBase := &localBase{rootPath: rootPath}
+	if rootInfo.IsDirectory() {
+		local = &LocalDirStore{localBase: localBase}
+	} else if rootInfo.IsRegular() {
+		local = &LocalFileStore{localBase: localBase}
+	}
+
+	localBase.relocs = make(map[string]string)
+
+	if err := local.reindex(); err != nil {
 		return nil, err
 	}
 
 	return local, nil
 }
 
-func (store *LocalStore) reindex() (err os.Error) {
-	store.root = IndexDir(store.rootPath, nil)
-	if store.root == nil {
-		return os.NewError(fmt.Sprintf("Failed to reindex root: %s", store.rootPath))
+func (store *LocalDirStore) reindex() (err os.Error) {
+	store.dir = IndexDir(store.RootPath(), nil)
+	if store.dir == nil {
+		return os.NewError(fmt.Sprintf("Failed to reindex root: %s", store.RootPath()))
 	}
 
-	store.index = IndexBlocks(store.root)
+	store.index = IndexBlocks(store.dir)
 	return nil
 }
 
-func (store *LocalStore) RelPath(fullpath string) (relpath string) {
-	relpath = strings.Replace(fullpath, store.rootPath, "", 1)
+func (store *LocalFileStore) reindex() (err os.Error) {
+	store.file, err = IndexFile(store.RootPath())
+	if err != nil {
+		return err
+	}
+
+	store.index = IndexBlocks(store.file)
+	return nil
+}
+
+func (store *localBase) RelPath(fullpath string) (relpath string) {
+	relpath = strings.Replace(fullpath, store.RootPath(), "", 1)
 	relpath = strings.TrimLeft(relpath, "/\\")
 	return relpath
 }
 
 const RELOC_PREFIX string = "_reloc"
 
-func (store *LocalStore) Relocate(fullpath string) (relocFullpath string, err os.Error) {
-	relocFh, err := ioutil.TempFile(store.rootPath, RELOC_PREFIX)
+func (store *localBase) Relocate(fullpath string) (relocFullpath string, err os.Error) {
+	relocFh, err := ioutil.TempFile(store.RootPath(), RELOC_PREFIX)
 	if err != nil {
 		return "", err
 	}
@@ -92,19 +136,23 @@ func (store *LocalStore) Relocate(fullpath string) (relocFullpath string, err os
 	return relocFullpath, nil
 }
 
-func (store *LocalStore) Resolve(relpath string) string {
+func (store *localBase) Resolve(relpath string) string {
 	if relocPath, hasReloc := store.relocs[relpath]; hasReloc {
 		relpath = relocPath
 	}
 
-	return filepath.Join(store.rootPath, relpath)
+	return filepath.Join(store.RootPath(), relpath)
 }
 
-func (store *LocalStore) Root() *Dir { return store.root }
+func (store *localBase) RootPath() string { return store.rootPath }
 
-func (store *LocalStore) Index() *BlockIndex { return store.index }
+func (store *LocalDirStore) Root() FsNode { return store.dir }
 
-func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
+func (store *LocalFileStore) Root() FsNode { return store.file }
+
+func (store *localBase) Index() *BlockIndex { return store.index }
+
+func (store *localBase) ReadBlock(strong string) ([]byte, os.Error) {
 	block, has := store.index.StrongBlock(strong)
 	if !has {
 		return nil, os.NewError(
@@ -120,7 +168,7 @@ func (store *LocalStore) ReadBlock(strong string) ([]byte, os.Error) {
 	return buf.Bytes(), nil
 }
 
-func (store *LocalStore) ReadInto(strong string, from int64, length int64, writer io.Writer) (int64, os.Error) {
+func (store *localBase) ReadInto(strong string, from int64, length int64, writer io.Writer) (int64, os.Error) {
 
 	file, has := store.index.StrongFile(strong)
 	if !has {

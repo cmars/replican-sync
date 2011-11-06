@@ -40,11 +40,12 @@ func TestPatch(t *testing.T) {
 	origDstF.Close()
 	dstF.Close()
 
-	err = PatchFile(srcPath, dstPath)
-	if err != nil {
-		fmt.Print(err.String())
-	}
-	assert.T(t, err == nil)
+	patchPlan, err := Patch(srcPath, dstPath)
+	//	printPlan(patchPlan)
+
+	assert.Tf(t, err == nil, "%v", err)
+	failedCmd, err := patchPlan.Exec()
+	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 
 	srcFile, err := fs.IndexFile(srcPath)
 	assert.T(t, err == nil)
@@ -517,8 +518,8 @@ func TestPatchWeakCollision(t *testing.T) {
 
 	// Src and dst blocks have same weak checksum
 	assert.Equal(t,
-		srcStore.Root().SubDirs[0].Files[0].Blocks[0].Weak(),
-		dstStore.Root().SubDirs[0].Files[0].Blocks[0].Weak())
+		(srcStore.Root().(*fs.Dir)).SubDirs[0].Files[0].Blocks[0].Weak(),
+		(dstStore.Root().(*fs.Dir)).SubDirs[0].Files[0].Blocks[0].Weak())
 
 	// Src and dst blocks have different strong checksum
 	assert.Tf(t, srcStore.Root().Strong() != dstStore.Root().Strong(),

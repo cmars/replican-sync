@@ -332,6 +332,6 @@ func TestParentRefs(t *testing.T) {
 		}
 		return true
 	})
-	
+
 	assert.Equal(t, 1, rootCount)
 }
