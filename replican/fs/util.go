@@ -1,6 +1,8 @@
 package fs
 
 import (
+	"fmt"
+	"hash"
 	"io"
 	"os"
 	"strings"
@@ -56,4 +58,9 @@ func Move(src string, dst string) (err os.Error) {
 	}
 
 	return nil
+}
+
+// Render a Hash as a hexadecimal string.
+func ToHexString(hash hash.Hash) string {
+	return fmt.Sprintf("%x", hash.Sum())
 }

@@ -135,7 +135,7 @@ func (dir *Dir) Strong() string {
 func (dir *Dir) calcStrong() string {
 	var sha1 = sha1.New()
 	sha1.Write(dir.stringBytes())
-	return toHexString(sha1)
+	return ToHexString(sha1)
 }
 
 func (dir *Dir) Parent() Node { return dir.parent }
@@ -203,43 +203,6 @@ func (dir *Dir) Item(name string) (FsNode, bool) {
 	}
 
 	return nil, false
-}
-
-type Checkpoint struct {
-	strong string
-	root   *Dir
-	Tstamp int64
-
-	ParentCkpt *Checkpoint
-}
-
-func (ckpt *Checkpoint) Strong() string {
-	if ckpt.strong == "" {
-		ckpt.strong = ckpt.calcStrong()
-	}
-	return ckpt.strong
-}
-
-// Calculate the strong checksum of a checkpoint.
-func (ckpt *Checkpoint) calcStrong() string {
-	var sha1 = sha1.New()
-	sha1.Write(ckpt.stringBytes())
-	return toHexString(sha1)
-}
-
-func (ckpt *Checkpoint) stringBytes() []byte {
-	buf := bytes.NewBufferString("")
-	fmt.Fprintf(buf, "root\t%s\n", ckpt.root.Strong())
-	fmt.Fprintf(buf, "tstamp\t%d\n", ckpt.Tstamp)
-	return buf.Bytes()
-}
-
-func (ckpt *Checkpoint) Parent() Node {
-	return ckpt.ParentCkpt
-}
-
-func (ckpt *Checkpoint) Root() *Dir {
-	return ckpt.root
 }
 
 // Visitor function to traverse a hierarchical tree model.

@@ -3,7 +3,6 @@ package fs
 import (
 	"crypto/sha1"
 	"fmt"
-	"hash"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,7 +166,7 @@ func IndexFile(path string) (file *File, err os.Error) {
 		case rd < 0:
 			return nil, err
 		case rd == 0:
-			file.strong = toHexString(sha1)
+			file.strong = ToHexString(sha1)
 			return file, nil
 		case rd > 0:
 			// Update block hashes
@@ -187,17 +186,12 @@ func IndexFile(path string) (file *File, err os.Error) {
 	return nil, nil
 }
 
-// Render a Hash as a hexadecimal string.
-func toHexString(hash hash.Hash) string {
-	return fmt.Sprintf("%x", hash.Sum())
-}
-
 // Strong checksum algorithm used throughout replican
 // For now, it's SHA-1.
 func StrongChecksum(buf []byte) string {
 	var sha1 = sha1.New()
 	sha1.Write(buf)
-	return toHexString(sha1)
+	return ToHexString(sha1)
 }
 
 // Model a block with weak and strong checksums.
