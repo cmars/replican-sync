@@ -44,15 +44,17 @@ func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
 type indexVisitor struct {
 	root   *Dir
 	dirMap map[string]*Dir
+	filter IndexFilter
 	errors chan<- os.Error
 }
 
 // Initialize the IndexDir visitor
-func newVisitor(path string) *indexVisitor {
+func newVisitor(path string, filter IndexFilter) *indexVisitor {
 	path = filepath.Clean(path)
 	path = strings.TrimRight(path, "/\\")
 
 	visitor := new(indexVisitor)
+	visitor.filter = filter
 	visitor.errors = make(chan os.Error)
 	visitor.dirMap = make(map[string]*Dir)
 	if rootInfo, err := os.Stat(path); err == nil {
@@ -65,6 +67,10 @@ func newVisitor(path string) *indexVisitor {
 
 // IndexDir visitor callback for directories
 func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
+	if !visitor.filter(path, f) {
+		return false
+	}
+
 	path = filepath.Clean(path)
 	dir, hasDir := visitor.dirMap[path]
 	if !hasDir {
@@ -88,6 +94,10 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 
 // IndexDir visitor callback for files
 func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
+	if !visitor.filter(path, f) {
+		return
+	}
+
 	file, err := IndexFile(path)
 	if file != nil {
 		dirpath, _ := filepath.Split(path)
@@ -109,10 +119,14 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 	}
 }
 
+type IndexFilter func(path string, f *os.FileInfo) bool
+
+func IndexAll(path string, f *os.FileInfo) bool { return true }
+
 // Build a hierarchical tree model representing a directory's contents
-func IndexDir(path string, errors chan<- os.Error) *Dir {
+func IndexDir(path string, filter IndexFilter, errors chan<- os.Error) *Dir {
 	control := make(chan bool)
-	visitor := newVisitor(path)
+	visitor := newVisitor(path, filter)
 	visitor.errors = errors
 
 	go func() {
