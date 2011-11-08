@@ -20,8 +20,12 @@ as I develop on it. The API is subject to change.
 
 ### Planned/In Development ###
 
-* Handle symbolic links.
+In order of current precedence.
+
+* (NEW) Simple version tracking and automated merge between stores.
+  * Emphasis on the 'simple'! This isn't going to be a DVCS! :)
 * Synchronization behavior options (filtering, handling deletes, etc.)
+* Handle symbolic links.
 * Performance benchmarking, tuning, optimization.
 
 ## Getting Started
