@@ -8,7 +8,7 @@ It is not compatible with the wire protocols and indexing used in the [rsync(1)]
 
 ## Status ##
 
-At this point, I'm hammering self-consistency and simplicity into the library 
+At this point, I'm working self-consistency and simplicity into the library 
 as I develop on it. The API is subject to change.
 
 ### Implemented ###
