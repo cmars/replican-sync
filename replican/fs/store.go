@@ -77,7 +77,7 @@ func NewLocalStore(rootPath string) (local LocalStore, err os.Error) {
 func (store *LocalDirStore) Init() os.Error {
 	store.relocs = make(map[string]string)
 	if store.Filter == nil {
-		store.Filter = IndexAll
+		store.Filter = IncludeAll
 	}
 	return store.reindex()
 }

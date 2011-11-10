@@ -121,7 +121,7 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 
 type IndexFilter func(path string, f *os.FileInfo) bool
 
-func IndexAll(path string, f *os.FileInfo) bool { return true }
+func IncludeAll(path string, f *os.FileInfo) bool { return true }
 
 // Build a hierarchical tree model representing a directory's contents
 func IndexDir(path string, filter IndexFilter, errors chan<- os.Error) *Dir {

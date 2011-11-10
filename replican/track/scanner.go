@@ -21,7 +21,7 @@ func StartPeriodicScan(store *fs.LocalDirStore, delay int) (<-chan *ScannerUpdat
 	go func() {
 		for _, end := <-endChan; !end; _, end = <-endChan {
 			update := &ScannerUpdate{}
-			update.Root = fs.IndexDir(store.RootPath, IndexCheckpoint, nil)
+			update.Root = fs.IndexDir(store.RootPath, excludeMetadata, nil)
 			if update.Root != nil && (update.Root.Strong() != store.Root().Strong()) {
 				updateChan <- update
 			}
