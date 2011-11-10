@@ -173,8 +173,8 @@ func TestPatchFileAppend(t *testing.T) {
 
 	errorChan := make(chan os.Error)
 	go func() {
-		srcRoot := fs.IndexDir(srcpath, fs.IndexAll, errorChan)
-		dstRoot := fs.IndexDir(dstpath, fs.IndexAll, errorChan)
+		srcRoot := fs.IndexDir(srcpath, fs.IncludeAll, errorChan)
+		dstRoot := fs.IndexDir(dstpath, fs.IncludeAll, errorChan)
 		assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 		close(errorChan)
 	}()
@@ -235,8 +235,8 @@ func TestPatchFileTruncate(t *testing.T) {
 
 	errorChan := make(chan os.Error)
 	go func() {
-		srcRoot := fs.IndexDir(srcpath, fs.IndexAll, errorChan)
-		dstRoot := fs.IndexDir(dstpath, fs.IndexAll, errorChan)
+		srcRoot := fs.IndexDir(srcpath, fs.IncludeAll, errorChan)
+		dstRoot := fs.IndexDir(dstpath, fs.IncludeAll, errorChan)
 		assert.Equal(t, srcRoot.Strong(), dstRoot.Strong())
 		close(errorChan)
 	}()
@@ -533,8 +533,8 @@ func TestPatchWeakCollision(t *testing.T) {
 
 	errorChan := make(chan os.Error)
 	go func() {
-		srcDir := fs.IndexDir(srcpath, fs.IndexAll, errorChan)
-		dstDir := fs.IndexDir(dstpath, fs.IndexAll, errorChan)
+		srcDir := fs.IndexDir(srcpath, fs.IncludeAll, errorChan)
+		dstDir := fs.IndexDir(dstpath, fs.IncludeAll, errorChan)
 		assert.Equal(t, srcDir.Strong(), dstDir.Strong())
 		close(errorChan)
 	}()
@@ -572,8 +572,8 @@ func TestPatchRenameScope(t *testing.T) {
 
 	errorChan := make(chan os.Error)
 	go func() {
-		srcDir := fs.IndexDir(srcpath, fs.IndexAll, errorChan)
-		dstDir := fs.IndexDir(dstpath, fs.IndexAll, errorChan)
+		srcDir := fs.IndexDir(srcpath, fs.IncludeAll, errorChan)
+		dstDir := fs.IndexDir(dstpath, fs.IncludeAll, errorChan)
 		assert.Equal(t, srcDir.Strong(), dstDir.Strong())
 		close(errorChan)
 	}()

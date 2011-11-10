@@ -30,7 +30,7 @@ func testIndexSomeMp3(t *testing.T) {
 }
 
 func testDirIndex(t *testing.T) {
-	dir := IndexDir("testroot/", IndexAll, nil)
+	dir := IndexDir("testroot/", IncludeAll, nil)
 
 	assert.Equal(t, "10dc111ed3edd17ac89e303e877874aa61b45434", dir.Strong())
 
@@ -45,7 +45,7 @@ func testDirIndex(t *testing.T) {
 }
 
 func testVisitDirsOnly(t *testing.T) {
-	dir := IndexDir("../../testroot/", IndexAll, nil)
+	dir := IndexDir("../../testroot/", IncludeAll, nil)
 
 	collect := []*Dir{}
 	visited := []Node{}
@@ -79,7 +79,7 @@ func testVisitDirsOnly(t *testing.T) {
 }
 
 func testVisitBlocks(t *testing.T) {
-	dir := IndexDir("../../testroot/", IndexAll, nil)
+	dir := IndexDir("../../testroot/", IncludeAll, nil)
 
 	collect := []*Block{}
 
@@ -109,7 +109,7 @@ func TestNodeRelPath(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := IndexDir(path, IndexAll, nil)
+	dir := IndexDir(path, IncludeAll, nil)
 
 	assert.Equal(t, "", RelPath(dir))
 	assert.Equal(t, "foo", RelPath(dir.SubDirs[0]))
@@ -175,7 +175,7 @@ func TestDirResolve(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), IndexAll, nil)
+	foo := IndexDir(filepath.Join(path, "foo"), IncludeAll, nil)
 
 	var node FsNode
 	var found bool
@@ -213,7 +213,7 @@ func TestDirDescent(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := IndexDir(path, IndexAll, nil)
+	dir := IndexDir(path, IncludeAll, nil)
 
 	for _, fpath := range []string{
 		filepath.Join("foo", "baobab"),
@@ -258,7 +258,7 @@ func TestGobbable(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), IndexAll, nil)
+	foo := IndexDir(filepath.Join(path, "foo"), IncludeAll, nil)
 
 	node, found := foo.Resolve(filepath.Join("bar", "aleph", "A"))
 	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
@@ -311,7 +311,7 @@ func TestParentRefs(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), IndexAll, nil)
+	foo := IndexDir(filepath.Join(path, "foo"), IncludeAll, nil)
 	rootCount := 0
 	Walk(foo, func(node Node) bool {
 		switch node.(type) {
