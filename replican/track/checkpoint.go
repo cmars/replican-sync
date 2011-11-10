@@ -94,6 +94,10 @@ func excludeMetadata(path string, f *os.FileInfo) bool {
 	return !f.IsDirectory() || name != METADATA_NAME
 }
 
+func (log *LocalCkptLog) metadataPath(parts ...string) string {
+	return filepath.Join(append([]string{log.RootPath, METADATA_NAME}, parts...)...)
+}
+
 // Initialize a local checkpoint log and its dir store.
 func (log *LocalCkptLog) Init() (err os.Error) {
 	//	mdPath := filepath.Join(log.RootPath, METADATA_NAME)
@@ -102,13 +106,13 @@ func (log *LocalCkptLog) Init() (err os.Error) {
 	//		return err
 	//	}
 
-	refsLocalPath := filepath.Join(log.RootPath, METADATA_NAME, "refs", "local")
+	refsLocalPath := log.metadataPath("refs", "local")
 	err = os.MkdirAll(refsLocalPath, 0755)
 	if err != nil {
 		return err
 	}
 
-	headPath := filepath.Join(refsLocalPath)
+	headPath := filepath.Join(refsLocalPath, "head")
 	headLines, err := readLines(headPath)
 	if err == nil && len(headLines) > 0 {
 		log.head = strings.TrimSpace(headLines[0])
@@ -131,7 +135,7 @@ func (log *LocalCkptLog) Init() (err os.Error) {
 }
 
 func (log *LocalCkptLog) Checkpoint(strong string) (Checkpoint, os.Error) {
-	ckptDir := filepath.Join(log.RootPath, METADATA_NAME, "logs", strong[:2], strong)
+	ckptDir := log.metadataPath("logs", strong[:2], strong)
 	ckpt := &LocalCkpt{log: log, strong: strong, ckptDir: ckptDir}
 
 	_, err := os.Stat(ckptDir)
@@ -147,57 +151,41 @@ func (log *LocalCkptLog) Head() (Checkpoint, os.Error) {
 	return log.Checkpoint(log.head)
 }
 
-func (log *LocalCkptLog) Commit() {
+func (log *LocalCkptLog) Commit() os.Error {
 
 	// Create new checkpoint
 	strong := log.store.Root().Strong()
 	ckpt, err := log.Checkpoint(strong)
 	localCkpt := ckpt.(*LocalCkpt)
 	head, err := log.Head()
-	if err == nil {
-		localCkpt.parents = append(localCkpt.parents, head)
+	if err != nil && err != os.ENOENT {
+		// Unable to lookup head. If head fails due to 
+		// not found, its because we don't have a head yet (new log).
+		// Otherwise, this is bad.
+		return err
 	}
+
+	localCkpt.parents = append(localCkpt.parents, head)
 
 	sec, nsec, _ := os.Time()
 	localCkpt.tstamp = sec*1000000000 + nsec
-	localCkpt.Create()
+	err = localCkpt.Create()
+	if err != nil {
+		// Unable to create the checkpoint record
+		return err
+	}
 
 	// Update the head
-	log.setHead(strong)
+	return log.setHead(strong)
 }
 
-func (log *LocalCkptLog) setHead(strong string) {
-	panic("not impl")
+func (log *LocalCkptLog) setHead(strong string) os.Error {
+	headPath := log.metadataPath("refs", "local", "head")
+	return writeLines(headPath, strong)
 }
 
 func (log *LocalCkptLog) Store() fs.BlockStore {
 	return log.store
-}
-
-func readLines(path string) ([]string, os.Error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	result := []string{}
-	lineReader, err := bufio.NewReaderSize(f, 80)
-	if err != nil {
-		return nil, err
-	}
-
-	for {
-		line, _, err := lineReader.ReadLine()
-		if err != nil {
-			return nil, err
-		}
-
-		lineStr := strings.TrimSpace(string(line))
-		result = append(result, lineStr)
-	}
-
-	return result, nil
 }
 
 func (ckpt *LocalCkpt) Init() (err os.Error) {
@@ -258,7 +246,7 @@ func (ckpt *LocalCkpt) Strong() string {
 	return ckpt.strong
 }
 
-func (ckpt *LocalCkpt) Create() {
+func (ckpt *LocalCkpt) Create() os.Error {
 	panic("not impl")
 }
 
@@ -277,4 +265,57 @@ func (ckpt *LocalCkpt) stringBytes() []byte {
 		fmt.Fprintf(buf, "parent\t%s\n", parent.Strong())
 	}
 	return buf.Bytes()
+}
+
+func readLines(path string) ([]string, os.Error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	result := []string{}
+	lineReader, err := bufio.NewReaderSize(f, 80)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		line, _, err := lineReader.ReadLine()
+		if err != nil {
+			return nil, err
+		}
+
+		lineStr := strings.TrimSpace(string(line))
+		result = append(result, lineStr)
+	}
+
+	return result, nil
+}
+
+func writeLines(path string, lines ...string) os.Error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w, err := bufio.NewWriterSize(f, 80)
+	if err != nil {
+		return err
+	}
+	defer w.Flush() // defers execute LIFO
+
+	for _, line := range lines {
+		_, err = w.WriteString(line)
+		if err != nil {
+			return err
+		}
+		_, err = w.WriteString("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
