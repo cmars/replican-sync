@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
+	"gob"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -59,7 +60,7 @@ type LocalCkpt struct {
 	// Reference to the local checkpoint log which contains this entry
 	log *LocalCkptLog
 
-	// Directory location containing the metadata information 
+	// Location containing the metadata information 
 	// for this checkpoint
 	ckptDir string
 
@@ -136,7 +137,7 @@ func (log *LocalCkptLog) Init() (err os.Error) {
 
 func (log *LocalCkptLog) Checkpoint(strong string) (Checkpoint, os.Error) {
 	ckptDir := log.metadataPath("logs", strong[:2], strong)
-	ckpt := &LocalCkpt{log: log, strong: strong, ckptDir: ckptDir}
+	ckpt := &LocalCkpt{ log: log, strong: strong, ckptDir: ckptDir }
 
 	_, err := os.Stat(ckptDir)
 	if err != nil {
@@ -157,6 +158,7 @@ func (log *LocalCkptLog) Commit() os.Error {
 	strong := log.store.Root().Strong()
 	ckpt, err := log.Checkpoint(strong)
 	localCkpt := ckpt.(*LocalCkpt)
+	
 	head, err := log.Head()
 	if err != nil && err != os.ENOENT {
 		// Unable to lookup head. If head fails due to 
@@ -165,10 +167,10 @@ func (log *LocalCkptLog) Commit() os.Error {
 		return err
 	}
 
-	localCkpt.parents = append(localCkpt.parents, head)
-
+	localCkpt.root = log.store.Root().(*fs.Dir)
 	sec, nsec, _ := os.Time()
 	localCkpt.tstamp = sec*1000000000 + nsec
+	localCkpt.parents = append(localCkpt.parents, head)
 	err = localCkpt.Create()
 	if err != nil {
 		// Unable to create the checkpoint record
@@ -189,15 +191,25 @@ func (log *LocalCkptLog) Store() fs.BlockStore {
 }
 
 func (ckpt *LocalCkpt) Init() (err os.Error) {
+	rootFp, err := os.Open(filepath.Join(ckpt.ckptDir, "root"))
+	if err != nil {
+		return err
+	}
+	
+	decoder := gob.NewDecoder(rootFp)
+	ckpt.root = &fs.Dir{}
+	err = decoder.Decode(ckpt.root)
+	if err != nil {
+		return err
+	}
+	
 	// parse parents, pull from log
 	// this will recursively load them
-	parentsFile := filepath.Join(ckpt.ckptDir, "parents")
-	lines, err := readLines(parentsFile)
+	lines, err := readLines(filepath.Join(ckpt.ckptDir, "checkpoint"))
 	if err != nil {
 		return err
 	}
 
-READLOOP:
 	for linenum, line := range lines {
 		fields := strings.Split(line, " ")
 		if len(fields) < 2 {
@@ -205,26 +217,58 @@ READLOOP:
 				"Invalid line %d in checkpoint %s metadata: %s",
 				linenum, ckpt.strong, line))
 		}
-
+		
+		var parent Checkpoint
 		switch fields[0] {
+		case "root":
+			verifyRoot := fields[1]
+			if verifyRoot != ckpt.root.Strong() {
+				err = os.NewError(fmt.Sprintf(
+					"Inconsistent checkpoint! Expect %s, root was %s",
+					verifyRoot, ckpt.root.Strong()))
+			}
 		case "parent":
-			parent, err := ckpt.log.Checkpoint(fields[1])
+			parent, err = ckpt.log.Checkpoint(fields[1])
 			if err == nil {
 				ckpt.parents = append(ckpt.parents, parent)
 			}
 		case "tstamp":
 			ckpt.tstamp, err = strconv.Atoi64(fields[1])
-			if err != nil {
-				break READLOOP
-			}
 		default:
-			return os.NewError(fmt.Sprintf(
+			err = os.NewError(fmt.Sprintf(
 				"Invalid line %d in checkpoint %s metadata: %s",
 				linenum, ckpt.strong, line))
+		}
+		
+		if err != nil {
+			break
 		}
 	}
 
 	return err
+}
+
+func (ckpt *LocalCkpt) Create() os.Error {
+	rootFp, err := os.Create(filepath.Join(ckpt.ckptDir, "root"))
+	if err != nil {
+		return err
+	}
+	defer rootFp.Close()
+	
+	encoder := gob.NewEncoder(rootFp)
+	err = encoder.Encode(ckpt.root)
+	if err != nil {
+		return err
+	}
+
+	ckptFp, err := os.Create(filepath.Join(ckpt.ckptDir, "checkpoint"))
+	if err != nil {
+		return err
+	}
+	defer ckptFp.Close()
+	ckptFp.Write(ckpt.stringBytes())
+	
+	return nil
 }
 
 func (ckpt *LocalCkpt) Parents() []Checkpoint {
@@ -246,10 +290,6 @@ func (ckpt *LocalCkpt) Strong() string {
 	return ckpt.strong
 }
 
-func (ckpt *LocalCkpt) Create() os.Error {
-	panic("not impl")
-}
-
 // Calculate the strong checksum of a checkpoint.
 func (ckpt *LocalCkpt) calcStrong() string {
 	var sha1 = sha1.New()
@@ -259,10 +299,10 @@ func (ckpt *LocalCkpt) calcStrong() string {
 
 func (ckpt *LocalCkpt) stringBytes() []byte {
 	buf := bytes.NewBufferString("")
-	fmt.Fprintf(buf, "tstamp\t%d\n", ckpt.Tstamp())
-	fmt.Fprintf(buf, "root\t%s\n", ckpt.root.Strong())
+	fmt.Fprintf(buf, "root %s\n", ckpt.root.Strong())
+	fmt.Fprintf(buf, "tstamp %d\n", ckpt.Tstamp())
 	for _, parent := range ckpt.parents {
-		fmt.Fprintf(buf, "parent\t%s\n", parent.Strong())
+		fmt.Fprintf(buf, "parent %s\n", parent.Strong())
 	}
 	return buf.Bytes()
 }
@@ -293,6 +333,7 @@ func readLines(path string) ([]string, os.Error) {
 	return result, nil
 }
 
+// writeLines... goin thru my mind...
 func writeLines(path string, lines ...string) os.Error {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
