@@ -12,7 +12,7 @@ import (
 	"github.com/bmizerany/assert"
 )
 
-func testIndexSomeMp3(t *testing.T) {
+func TestIndexSomeMp3(t *testing.T) {
 	var f *File
 	var err os.Error
 
@@ -29,10 +29,10 @@ func testIndexSomeMp3(t *testing.T) {
 	assert.Equal(t, "eabbe570b21cd2c5101a18b51a3174807fa5c0da", f.Blocks[1].Strong())
 }
 
-func testDirIndex(t *testing.T) {
+func TestDirIndex(t *testing.T) {
 	dir := IndexDir("testroot/", IncludeAll, nil)
 
-	assert.Equal(t, "10dc111ed3edd17ac89e303e877874aa61b45434", dir.Strong())
+	assert.Equal(t, "feab33f9685531a1c1c9c22d5d8af98267ca9426", dir.Strong())
 
 	var myMusic *Dir = dir.SubDirs[0]
 	assert.Equal(t, "My Music", myMusic.Name())
@@ -44,7 +44,7 @@ func testDirIndex(t *testing.T) {
 	}
 }
 
-func testVisitDirsOnly(t *testing.T) {
+func TestVisitDirsOnly(t *testing.T) {
 	dir := IndexDir("../../testroot/", IncludeAll, nil)
 
 	collect := []*Dir{}
