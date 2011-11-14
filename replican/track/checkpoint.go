@@ -17,8 +17,7 @@ import (
 
 const METADATA_NAME = ".replican"
 
-// A Checkpoint represents the state of a BlockStore's tree
-// at a single point in time.
+// A Checkpoint represents the state of a directory at a point in time.
 type Checkpoint interface {
 
 	// Representation of the tree and all its contents.
@@ -37,8 +36,7 @@ type Checkpoint interface {
 	Tstamp() int64
 }
 
-// A Checkpoint log tracks all the checkpoints taken of a BlockStore
-// over time.
+// A Checkpoint log tracks changes in a directory over time.
 type CheckpointLog interface {
 
 	// Fetch the checkpoint with given strong checksum
@@ -50,14 +48,18 @@ type CheckpointLog interface {
 	// Create a checkpoint of the current block store state 
 	// and append to the head of the log. 
 	Snapshot() os.Error
-
-	// The store tracked by this log
-	Store() fs.BlockStore
 }
 
-// A checkpoint stored locally in a tracked BlockStore.
+// A checkpoint stored locally in a metadata subdirectory.
 type LocalCkpt struct {
 
+	// Representation of the tree and all its contents
+	root *fs.Dir
+
+	strong string
+
+	parents []Checkpoint
+	
 	// Reference to the local checkpoint log which contains this entry
 	log *LocalCkptLog
 
@@ -65,15 +67,8 @@ type LocalCkpt struct {
 	// for this checkpoint
 	ckptDir string
 
-	strong string
-
-	// Representation of the tree and all its contents
-	root *fs.Dir
-
 	// Timestamp when the checkpoint was taken
 	tstamp int64
-
-	parents []Checkpoint
 }
 
 // A Null Object instance of a Checkpoint.
@@ -90,15 +85,14 @@ func (nc *nilCkpt) Tstamp() int64 { return int64(0) }
 // A checkpoint log that manages and tracks a LocalDirStore over time.
 type LocalCkptLog struct {
 
-	// Local store directory
+	// Tracked local directory
 	RootPath string
-
+	
+	// Strong checksum of the current head
 	head string
-
+	
+	// Filter used to index the local directory on snapshot.
 	Filter fs.IndexFilter
-
-	// Local directory store
-	store *fs.LocalDirStore
 }
 
 // Filter function to exclude the metadata subdirectory from indexing.
@@ -107,8 +101,18 @@ func excludeMetadata(path string, f *os.FileInfo) bool {
 	return !f.IsDirectory() || name != METADATA_NAME
 }
 
+// Same usage as filepath.Join, but path will be relative to the metadata directory.
 func (log *LocalCkptLog) metadataPath(parts ...string) string {
 	return filepath.Join(append([]string{log.RootPath, METADATA_NAME}, parts...)...)
+}
+
+func (log *LocalCkptLog) createFilter() fs.IndexFilter {
+	if log.Filter == nil {
+		return excludeMetadata
+	}
+	return func(path string, f *os.FileInfo) bool {
+		return log.Filter(path, f) && excludeMetadata(path, f)
+	}
 }
 
 // Initialize a local checkpoint log and its dir store.
@@ -128,19 +132,8 @@ func (log *LocalCkptLog) Init() (err os.Error) {
 		log.head = strings.TrimSpace(headLines[0])
 	}
 
-	log.store = &fs.LocalDirStore{
-		LocalInfo: &fs.LocalInfo{RootPath: log.RootPath}}
-
 	// Exclude checkpoint log metadata directory from indexing
-	if log.Filter == nil {
-		log.store.Filter = excludeMetadata
-	} else {
-		log.store.Filter = func(path string, f *os.FileInfo) bool {
-			return log.Filter(path, f) && excludeMetadata(path, f)
-		}
-	}
 
-	err = log.store.Init()
 	return err
 }
 
@@ -165,7 +158,7 @@ func (log *LocalCkptLog) Head() (Checkpoint, os.Error) {
 }
 
 func (log *LocalCkptLog) Snapshot() (Checkpoint, os.Error) {
-	root := fs.IndexDir(log.RootPath, excludeMetadata, nil)
+	root := fs.IndexDir(log.RootPath, log.createFilter(), nil)
 	ckpt := &LocalCkpt{log: log, root: root}
 
 	sec, nsec, _ := os.Time()
@@ -201,10 +194,6 @@ func (log *LocalCkptLog) setHead(strong string) (err os.Error) {
 
 	log.head = strong
 	return err
-}
-
-func (log *LocalCkptLog) Store() fs.BlockStore {
-	return log.store
 }
 
 func (ckpt *LocalCkpt) Init() (err os.Error) {
