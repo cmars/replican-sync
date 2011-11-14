@@ -8,6 +8,7 @@ import (
 	"gob"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -48,7 +49,7 @@ type CheckpointLog interface {
 
 	// Create a checkpoint of the current block store state 
 	// and append to the head of the log. 
-	Commit() os.Error
+	Snapshot() os.Error
 
 	// The store tracked by this log
 	Store() fs.BlockStore
@@ -74,6 +75,17 @@ type LocalCkpt struct {
 
 	parents []Checkpoint
 }
+
+// A Null Object instance of a Checkpoint.
+type nilCkpt struct{}
+
+func (nc *nilCkpt) Root() *fs.Dir { return nil }
+
+func (nc *nilCkpt) Parents() []Checkpoint { return []Checkpoint{} }
+
+func (nc *nilCkpt) Strong() string { return "" }
+
+func (nc *nilCkpt) Tstamp() int64 { return int64(0) }
 
 // A checkpoint log that manages and tracks a LocalDirStore over time.
 type LocalCkptLog struct {
@@ -101,21 +113,18 @@ func (log *LocalCkptLog) metadataPath(parts ...string) string {
 
 // Initialize a local checkpoint log and its dir store.
 func (log *LocalCkptLog) Init() (err os.Error) {
-	//	mdPath := filepath.Join(log.RootPath, METADATA_NAME)
-	//	err = os.MkdirAll(mdPath, 0755)
-	//	if err != nil {
-	//		return err
-	//	}
 
 	refsLocalPath := log.metadataPath("refs", "local")
 	err = os.MkdirAll(refsLocalPath, 0755)
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 
 	headPath := filepath.Join(refsLocalPath, "head")
 	headLines, err := readLines(headPath)
 	if err == nil && len(headLines) > 0 {
+		debug.PrintStack()
 		log.head = strings.TrimSpace(headLines[0])
 	}
 
@@ -137,11 +146,11 @@ func (log *LocalCkptLog) Init() (err os.Error) {
 
 func (log *LocalCkptLog) Checkpoint(strong string) (Checkpoint, os.Error) {
 	ckptDir := log.metadataPath("logs", strong[:2], strong)
-	ckpt := &LocalCkpt{ log: log, strong: strong, ckptDir: ckptDir }
+	ckpt := &LocalCkpt{log: log, strong: strong, ckptDir: ckptDir}
 
 	_, err := os.Stat(ckptDir)
 	if err != nil {
-		return ckpt, err
+		return &nilCkpt{}, err
 	}
 
 	err = ckpt.Init()
@@ -149,41 +158,49 @@ func (log *LocalCkptLog) Checkpoint(strong string) (Checkpoint, os.Error) {
 }
 
 func (log *LocalCkptLog) Head() (Checkpoint, os.Error) {
+	if log.head == "" {
+		return new(nilCkpt), nil
+	}
 	return log.Checkpoint(log.head)
 }
 
-func (log *LocalCkptLog) Commit() os.Error {
+func (log *LocalCkptLog) Snapshot() (Checkpoint, os.Error) {
+	root := fs.IndexDir(log.RootPath, excludeMetadata, nil)
+	ckpt := &LocalCkpt{log: log, root: root}
 
-	// Create new checkpoint
-	strong := log.store.Root().Strong()
-	ckpt, err := log.Checkpoint(strong)
-	localCkpt := ckpt.(*LocalCkpt)
-	
-	head, err := log.Head()
-	if err != nil && err != os.ENOENT {
-		// Unable to lookup head. If head fails due to 
-		// not found, its because we don't have a head yet (new log).
-		// Otherwise, this is bad.
-		return err
-	}
-
-	localCkpt.root = log.store.Root().(*fs.Dir)
 	sec, nsec, _ := os.Time()
-	localCkpt.tstamp = sec*1000000000 + nsec
-	localCkpt.parents = append(localCkpt.parents, head)
-	err = localCkpt.Create()
-	if err != nil {
-		// Unable to create the checkpoint record
-		return err
+	ckpt.tstamp = sec*1000000000 + nsec
+
+	head, err := log.Head()
+	if err == nil && head.Strong() != "" {
+		ckpt.parents = append(ckpt.parents, head)
 	}
 
-	// Update the head
-	return log.setHead(strong)
+	err = ckpt.Create()
+	if err != nil {
+		return ckpt, err
+	}
+
+	err = log.setHead(ckpt.Strong())
+	return ckpt, err
 }
 
-func (log *LocalCkptLog) setHead(strong string) os.Error {
+func (log *LocalCkptLog) setHead(strong string) (err os.Error) {
+	err = os.MkdirAll(log.metadataPath("refs", "local"), 0755)
+	if err != nil {
+		debug.PrintStack()
+		return err
+	}
+
 	headPath := log.metadataPath("refs", "local", "head")
-	return writeLines(headPath, strong)
+	err = writeLines(headPath, strong)
+	if err != nil {
+		debug.PrintStack()
+		return err
+	}
+
+	log.head = strong
+	return err
 }
 
 func (log *LocalCkptLog) Store() fs.BlockStore {
@@ -193,20 +210,23 @@ func (log *LocalCkptLog) Store() fs.BlockStore {
 func (ckpt *LocalCkpt) Init() (err os.Error) {
 	rootFp, err := os.Open(filepath.Join(ckpt.ckptDir, "root"))
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
-	
+
 	decoder := gob.NewDecoder(rootFp)
 	ckpt.root = &fs.Dir{}
 	err = decoder.Decode(ckpt.root)
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
-	
+
 	// parse parents, pull from log
 	// this will recursively load them
 	lines, err := readLines(filepath.Join(ckpt.ckptDir, "checkpoint"))
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 
@@ -217,7 +237,7 @@ func (ckpt *LocalCkpt) Init() (err os.Error) {
 				"Invalid line %d in checkpoint %s metadata: %s",
 				linenum, ckpt.strong, line))
 		}
-		
+
 		var parent Checkpoint
 		switch fields[0] {
 		case "root":
@@ -239,7 +259,7 @@ func (ckpt *LocalCkpt) Init() (err os.Error) {
 				"Invalid line %d in checkpoint %s metadata: %s",
 				linenum, ckpt.strong, line))
 		}
-		
+
 		if err != nil {
 			break
 		}
@@ -249,25 +269,37 @@ func (ckpt *LocalCkpt) Init() (err os.Error) {
 }
 
 func (ckpt *LocalCkpt) Create() os.Error {
+	strong := ckpt.Strong()
+	ckpt.ckptDir = ckpt.log.metadataPath("logs", strong[:2], strong)
+
+	err := os.MkdirAll(ckpt.ckptDir, 0755)
+	if err != nil {
+		debug.PrintStack()
+		return err
+	}
+
 	rootFp, err := os.Create(filepath.Join(ckpt.ckptDir, "root"))
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 	defer rootFp.Close()
-	
+
 	encoder := gob.NewEncoder(rootFp)
 	err = encoder.Encode(ckpt.root)
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 
 	ckptFp, err := os.Create(filepath.Join(ckpt.ckptDir, "checkpoint"))
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 	defer ckptFp.Close()
 	ckptFp.Write(ckpt.stringBytes())
-	
+
 	return nil
 }
 
@@ -313,7 +345,6 @@ func readLines(path string) ([]string, os.Error) {
 		return nil, err
 	}
 	defer f.Close()
-
 	result := []string{}
 	lineReader, err := bufio.NewReaderSize(f, 80)
 	if err != nil {
@@ -322,7 +353,9 @@ func readLines(path string) ([]string, os.Error) {
 
 	for {
 		line, _, err := lineReader.ReadLine()
-		if err != nil {
+		if err == os.EOF {
+			break
+		} else if err != nil {
 			return nil, err
 		}
 
@@ -335,14 +368,16 @@ func readLines(path string) ([]string, os.Error) {
 
 // writeLines... goin thru my mind...
 func writeLines(path string, lines ...string) os.Error {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0644)
+	f, err := os.Create(path)
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 	defer f.Close()
 
 	w, err := bufio.NewWriterSize(f, 80)
 	if err != nil {
+		debug.PrintStack()
 		return err
 	}
 	defer w.Flush() // defers execute LIFO
@@ -350,10 +385,12 @@ func writeLines(path string, lines ...string) os.Error {
 	for _, line := range lines {
 		_, err = w.WriteString(line)
 		if err != nil {
+			debug.PrintStack()
 			return err
 		}
 		_, err = w.WriteString("\n")
 		if err != nil {
+			debug.PrintStack()
 			return err
 		}
 	}
