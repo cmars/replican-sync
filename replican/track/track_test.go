@@ -61,7 +61,7 @@ func TestCheckpointLog(t *testing.T) {
 			tg.D("light and magic",
 				tg.F("blue jeans", tg.B(123, 45678)))),
 		tg.D("bedrock",
-			tg.F("heaven scent", tg.B(909, 10101))))
+			tg.F("beautiful strange", tg.B(909, 10101))))
 	appendPath := treegen.TestTree(t, treeSpec)
 	err = sync.Sync(filepath.Join(appendPath, "root"), filepath.Join(path, "root"))
 	assert.Tf(t, err == nil, "%v", err)

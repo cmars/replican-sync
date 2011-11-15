@@ -25,7 +25,7 @@ type Checkpoint interface {
 
 	// Parent checkpoints which preceded this state of the tree.
 	// Every checkpoint, except the first, will have at least one parent.
-	// A checkpoint that results from a patch operation will have multiple parents.
+	// A checkpoint that results from a merge operation will have multiple parents.
 	Parents() []Checkpoint
 
 	// Strong checksum of the checkpoint.
@@ -71,7 +71,8 @@ type LocalCkpt struct {
 	tstamp int64
 }
 
-// A Null Object instance of a Checkpoint.
+// Placeholder Checkpoint internally representing a Null Object.
+// A nilCkpt at the head indicates an empty log.
 type nilCkpt struct{}
 
 func (nc *nilCkpt) Root() *fs.Dir { return nil }
@@ -169,7 +170,7 @@ func (log *LocalCkptLog) Snapshot() (Checkpoint, os.Error) {
 		ckpt.parents = append(ckpt.parents, head)
 	}
 
-	err = ckpt.Create()
+	err = ckpt.create()
 	if err != nil {
 		return ckpt, err
 	}
@@ -257,7 +258,8 @@ func (ckpt *LocalCkpt) Init() (err os.Error) {
 	return err
 }
 
-func (ckpt *LocalCkpt) Create() os.Error {
+// Create this checkpoint in the log that contains it.
+func (ckpt *LocalCkpt) create() os.Error {
 	strong := ckpt.Strong()
 	ckpt.ckptDir = ckpt.log.metadataPath("logs", strong[:2], strong)
 
@@ -292,18 +294,25 @@ func (ckpt *LocalCkpt) Create() os.Error {
 	return nil
 }
 
+// Parent checkpoints from which this checkpoint derives in the log.
 func (ckpt *LocalCkpt) Parents() []Checkpoint {
 	return ckpt.parents
 }
 
+// Time at which the checkpoint was taken.
 func (ckpt *LocalCkpt) Tstamp() int64 {
 	return ckpt.tstamp
 }
 
+// Tree state at the time this checkpoint was taken.
 func (ckpt *LocalCkpt) Root() *fs.Dir {
 	return ckpt.root
 }
 
+// Calculate the strong checksum of a checkpoint.
+// This makes the checkpoint content addressable to the state of the tree,
+// the time at which the checkpoint was taken, and the lineage of the 
+// checkpoint.
 func (ckpt *LocalCkpt) Strong() string {
 	if ckpt.strong == "" {
 		ckpt.strong = ckpt.calcStrong()
@@ -318,6 +327,7 @@ func (ckpt *LocalCkpt) calcStrong() string {
 	return fs.ToHexString(sha1)
 }
 
+// Represent a local checkpoint as a byte string data.
 func (ckpt *LocalCkpt) stringBytes() []byte {
 	buf := bytes.NewBufferString("")
 	fmt.Fprintf(buf, "root %s\n", ckpt.root.Strong())
@@ -328,6 +338,7 @@ func (ckpt *LocalCkpt) stringBytes() []byte {
 	return buf.Bytes()
 }
 
+// Read a file as a slice of strings, one per line.
 func readLines(path string) ([]string, os.Error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -355,6 +366,7 @@ func readLines(path string) ([]string, os.Error) {
 	return result, nil
 }
 
+// Write the slice of strings to a file, one per line.
 // writeLines... goin thru my mind...
 func writeLines(path string, lines ...string) os.Error {
 	f, err := os.Create(path)
