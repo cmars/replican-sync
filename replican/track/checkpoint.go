@@ -44,10 +44,6 @@ type CheckpointLog interface {
 
 	// Fetch the current head checkpoint.
 	Head() (Checkpoint, os.Error)
-
-	// Create a checkpoint of the current block store state 
-	// and append to the head of the log. 
-	Snapshot() os.Error
 }
 
 // A checkpoint stored locally in a metadata subdirectory.
@@ -158,6 +154,8 @@ func (log *LocalCkptLog) Head() (Checkpoint, os.Error) {
 	return log.Checkpoint(log.head)
 }
 
+// Create a checkpoint of the current block store state 
+// and append to the head of the log. 
 func (log *LocalCkptLog) Snapshot() (Checkpoint, os.Error) {
 	root := fs.IndexDir(log.RootPath, log.createFilter(), nil)
 	ckpt := &LocalCkpt{log: log, root: root}

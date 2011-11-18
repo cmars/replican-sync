@@ -2,7 +2,7 @@ package track
 
 import (
 	"fmt"
-	"github.com/cmars/replican-sync/replican/fs"
+//	"github.com/cmars/replican-sync/replican/fs"
 	"github.com/cmars/replican-sync/replican/sync"
 )
 
@@ -45,15 +45,18 @@ type TrackerResp interface {
 }
 
 func StartTracker(path string, requestChan chan TrackerReq) {
-	store, _ := fs.NewLocalStore(path)
-	dirStore := store.(*fs.LocalDirStore)
-	scannerUpdateChan, endScannerChan := StartPeriodicScan(dirStore, 60)
+//	store, _ := fs.NewLocalStore(path)
+//	dirStore := store.(*fs.LocalDirStore)
+	
 	go func() {
+		poller := NewPoller(path, 60)
 		for {
 			select {
-			case scannerUpdate := <-scannerUpdateChan:
-				fmt.Printf("%v\n", scannerUpdate)
-				//				store.Checkpoint(scannerUpdate.Root)
+			case path := <-poller.Paths:
+				fmt.Printf("%v\n", path)
+				// update this part of current head
+				// commit if changed
+//				log.Commit(scannerUpdate.Root)
 			case request := <-requestChan:
 				switch request.(type) {
 				case *ReqIndex:
@@ -63,6 +66,6 @@ func StartTracker(path string, requestChan chan TrackerReq) {
 				}
 			}
 		}
-		endScannerChan <- true
+		poller.Stop()
 	}()
 }

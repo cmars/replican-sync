@@ -1,0 +1,57 @@
+
+So we have a simple checkpoint log that can track a directory. Great.
+
+There's much more to be done:
+
+Remotes
+-------
+
+We'll need to synchronize the logs on remotes in order to know what we've 
+gotten from a remote in the past, and to identify and resolve conflicts.
+
+This will essentially be a mirror of a remote checkpoint log.
+
+There's no reason the same local checkpoint log could not be used, but it will 
+need to be adapted to support the concept of storing for multiple remotes.
+
+This also leaves LocalCkptLog.Snapshot on shaky ground... it doesn't make 
+sense to snapshot a remote!
+
+An external process will need to poll for and subscribe to remote updates.
+
+Scanning
+--------
+
+We need a process that maintains the checkpoint log, recieving filesystem 
+changes and updating the head accordingly.
+
+inotify on Linux is a natural choice. fsevent and Whatever Windows Uses for 
+something similar on mac/win. Since inotify is currently supported in golang 
+stdlib, this will be first.
+
+Periodic scanning will be slow, but it might also be a necessary alternative.
+
+Ideally, the scanner will be able to incrementally update the index only where 
+the filesystem changes. This will save much disk I/O.
+Scanner will act as a "treekeeper". It will recieve tree requests from a chan 
+and respond accordingly. It will also recieve notification of fs changes and 
+rebuild the root, adding checkpoints along the way.
+
+Would it make sense for the treekeeper to respond: "come back in a bit, I'm 
+rescanning"?
+
+Backups
+-------
+
+Checkpoints are kind of like backups, but without the content. Useful for 
+keeping track of what we've synced with in the past, but not much else.
+
+What if we develop a new fs.BlockStore that stores content addressable blocks 
+in the metadata subdir? Instant backups!
+
+Since we're storing blocks, subsequent backups are incremental.
+
+This is out of scope for the first release, but something to consider post-1.0.
+
+ 
+
