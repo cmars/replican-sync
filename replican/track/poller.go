@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+// Periodically polls a directory tree for changes in 
+// file and directory modified times.
 type Poller struct {
 	Root      string
 	Paths     chan string
@@ -30,7 +32,7 @@ func NewPoller(root string, period int, writer io.Writer) *Poller {
 		Paths:     make(chan string, 20),
 		period_ns: int64(period) * 1000000000,
 		mtimes:    make(map[string]int64),
-		exit:      make(chan bool, 2),
+		exit:      make(chan bool, 1),
 		log:       log.New(writer, "", log.LstdFlags|log.Lshortfile)}
 	go poller.run()
 	return poller
