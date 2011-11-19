@@ -1,4 +1,3 @@
-
 package track
 
 import (
@@ -9,17 +8,16 @@ import (
 	"time"
 )
 
-const watchMask = (
-	inotify.IN_CREATE | inotify.IN_DELETE |
+const watchMask = (inotify.IN_CREATE | inotify.IN_DELETE |
 	inotify.IN_DELETE_SELF | inotify.IN_MODIFY |
-	inotify.IN_MOVE | inotify.IN_MOVE_SELF )
+	inotify.IN_MOVE | inotify.IN_MOVE_SELF)
 
 type Watcher struct {
 	*inotify.Watcher
-	Root string
-	updateChan chan string
+	Root          string
+	updateChan    chan string
 	settlingChans map[string]chan *inotify.Event
-	exit chan bool
+	exit          chan bool
 }
 
 func (watcher *Watcher) VisitDir(path string, f *os.FileInfo) bool {
@@ -28,7 +26,7 @@ func (watcher *Watcher) VisitDir(path string, f *os.FileInfo) bool {
 }
 
 func (watcher *Watcher) VisitFile(path string, f *os.FileInfo) {
-	
+
 }
 
 func NewWatcher(root string, period int) (*Watcher, os.Error) {
@@ -36,18 +34,18 @@ func NewWatcher(root string, period int) (*Watcher, os.Error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	watcher := &Watcher{
-		Watcher: inotifyWatcher,
-		Root: root,
-		updateChan: make(chan string),
+		Watcher:       inotifyWatcher,
+		Root:          root,
+		updateChan:    make(chan string),
 		settlingChans: make(map[string]chan *inotify.Event),
-		exit: make(chan bool) }
-	
+		exit:          make(chan bool)}
+
 	filepath.Walk(root, watcher, nil)
-	
+
 	go watcher.run()
-	
+
 	return watcher, nil
 }
 
@@ -55,19 +53,19 @@ func (watcher *Watcher) run() {
 	for {
 		select {
 		case ev := <-watcher.Event:
-			if ev.Mask & (inotify.IN_CREATE | inotify.IN_ISDIR) != 0 {
+			if ev.Mask&(inotify.IN_CREATE|inotify.IN_ISDIR) != 0 {
 				watcher.AddWatch(ev.Name, inotify.IN_ONLYDIR)
 			}
-			
+
 			settleChan, isSettling := watcher.settlingChans[ev.Name]
 			if !isSettling {
 				settleChan = watcher.newSettlePath(ev.Name)
 			}
 			settleChan <- ev
-			
+
 		case err := <-watcher.Error:
 			log.Println("Error watching %s: %v", watcher.Root, err)
-		
+
 		case _ = <-watcher.exit:
 			return
 		}
@@ -79,23 +77,23 @@ func (watcher *Watcher) run() {
 // a given 
 func (watcher *Watcher) newSettlePath(path string) chan *inotify.Event {
 	incoming := make(chan *inotify.Event)
-	timer := time.NewTimer(15*1000000000)
-	go func(){
+	timer := time.NewTimer(15 * 1000000000)
+	go func() {
 		for {
 			select {
-			case _ = <- incoming:
+			case _ = <-incoming:
 				// Reset the timer
 				if timer.Stop() {
-					timer = time.NewTimer(15*1000000000)
+					timer = time.NewTimer(15 * 1000000000)
 				} else {
 					return
 				}
-			case _ = <- timer.C:
+			case _ = <-timer.C:
 				watcher.updateChan <- path
 				return
 			}
 		}
 	}()
-	
+
 	return incoming
 }

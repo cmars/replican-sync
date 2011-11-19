@@ -55,7 +55,7 @@ type LocalCkpt struct {
 	strong string
 
 	parents []Checkpoint
-	
+
 	// Reference to the local checkpoint log which contains this entry
 	log *LocalCkptLog
 
@@ -84,10 +84,10 @@ type LocalCkptLog struct {
 
 	// Tracked local directory
 	RootPath string
-	
+
 	// Strong checksum of the current head
 	head string
-	
+
 	// Filter used to index the local directory on snapshot.
 	Filter fs.IndexFilter
 }
