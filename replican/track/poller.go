@@ -1,6 +1,8 @@
 package track
 
 import (
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,14 +20,18 @@ type Poller struct {
 	log       *log.Logger
 }
 
-func NewPoller(root string, period int) *Poller {
+func NewPoller(root string, period int, writer io.Writer) *Poller {
+	if writer == nil {
+		writer = ioutil.Discard
+	}
+
 	poller := &Poller{
 		Root:      filepath.Clean(root),
 		Paths:     make(chan string, 20),
 		period_ns: int64(period) * 1000000000,
 		mtimes:    make(map[string]int64),
 		exit:      make(chan bool, 2),
-		log:       log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)}
+		log:       log.New(writer, "", log.LstdFlags|log.Lshortfile)}
 	go poller.run()
 	return poller
 }
@@ -70,24 +76,7 @@ func (poller *Poller) Poll() {
 	for path, _ := range poller.changed {
 		poller.log.Printf("check %s", path)
 
-		pruned := false
-		if path != poller.Root {
-			parent, _ := filepath.Split(path)
-			parent = filepath.Clean(parent)
-			for parent != "" {
-				poller.log.Printf("prune? %s vs %s", path, parent)
-				if _, has := poller.changed[parent]; has {
-					poller.log.Printf("prune! %s", path)
-					pruned = true
-					break
-				}
-
-				parent, _ = filepath.Split(parent)
-				parent = filepath.Clean(parent)
-			}
-		}
-
-		if !pruned {
+		if !poller.hasChangedParent(path) {
 			sendPaths = append(sendPaths, path)
 		}
 	}
@@ -96,6 +85,16 @@ func (poller *Poller) Poll() {
 		poller.log.Printf("send: %s", path)
 		poller.Paths <- path
 	}
+}
+
+func (poller *Poller) hasChangedParent(path string) bool {
+	for parent, _ := filepath.Split(path); parent != "/"; parent, _ = filepath.Split(parent) {
+		parent = filepath.Clean(parent)
+		if _, has := poller.changed[parent]; has {
+			return true
+		}
+	}
+	return false
 }
 
 func (poller *Poller) run() {

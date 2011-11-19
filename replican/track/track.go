@@ -49,7 +49,7 @@ func StartTracker(path string, requestChan chan TrackerReq) {
 	//	dirStore := store.(*fs.LocalDirStore)
 
 	go func() {
-		poller := NewPoller(path, 60)
+		poller := NewPoller(path, 60, nil)
 		for {
 			select {
 			case path := <-poller.Paths:
