@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Provide access to the raw byte storage.
@@ -108,9 +107,7 @@ func (store *LocalFileStore) reindex() (err os.Error) {
 }
 
 func (store *LocalInfo) RelPath(fullpath string) (relpath string) {
-	relpath = strings.Replace(fullpath, store.RootPath, "", 1)
-	relpath = strings.TrimLeft(relpath, "/\\")
-	return relpath
+	return MakeRelative(fullpath, store.RootPath)
 }
 
 const RELOC_PREFIX string = "_reloc"

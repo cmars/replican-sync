@@ -64,3 +64,11 @@ func Move(src string, dst string) (err os.Error) {
 func ToHexString(hash hash.Hash) string {
 	return fmt.Sprintf("%x", hash.Sum())
 }
+
+// Given an absolute path and a common root, return 
+// the relative path to the common root.
+func MakeRelative(fullpath string, rootpath string) (relpath string) {
+	relpath = strings.Replace(fullpath, rootpath, "", 1)
+	relpath = strings.TrimLeft(relpath, "/\\")
+	return relpath
+}
