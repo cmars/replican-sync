@@ -13,7 +13,7 @@ import (
 // file and directory modified times.
 type Poller struct {
 	Root      string
-	Changed     chan []string
+	Changed   chan []string
 	period_ns int64
 	mtimes    map[string]int64
 	changed   map[string]bool
@@ -29,7 +29,7 @@ func NewPoller(root string, period int, writer io.Writer) *Poller {
 
 	poller := &Poller{
 		Root:      filepath.Clean(root),
-		Changed:     make(chan []string, 20),
+		Changed:   make(chan []string, 20),
 		period_ns: int64(period) * 1000000000,
 		mtimes:    make(map[string]int64),
 		exit:      make(chan bool, 1),

@@ -5,7 +5,7 @@ import (
 	"gob"
 	"os"
 	"path/filepath"
-	
+
 	"github.com/cmars/replican-sync/replican/fs"
 )
 
@@ -66,7 +66,7 @@ func (tracker *Tracker) UpdatePaths(paths []string) {
 		if err != nil {
 			continue
 		}
-		
+
 		var pathIndex fs.FsNode
 		if pathInfo.IsDirectory() {
 			pathIndex = fs.IndexDir(path, tracker.Filter, nil)
@@ -76,7 +76,7 @@ func (tracker *Tracker) UpdatePaths(paths []string) {
 			// what is it?
 			continue
 		}
-		
+
 		if err != nil {
 			tracker.tree = updateNode(tracker.tree, relpath, pathIndex)
 		}
@@ -84,34 +84,33 @@ func (tracker *Tracker) UpdatePaths(paths []string) {
 	tracker.tree.Strong() // recalculate hashes all the way down
 }
 
-func updateNode(
-		tree *fs.Dir, relpath string, newNode fs.FsNode) *fs.Dir {
+func updateNode(tree *fs.Dir, relpath string, newNode fs.FsNode) *fs.Dir {
 	if relpath == "" {
 		return newNode.(*fs.Dir)
 	}
-	
+
 	oldNode, hasOld := tree.Resolve(relpath)
-	
+
 	parentPath, _ := filepath.Split(relpath)
 	parentNode, hasParent := tree.Resolve(parentPath)
 	if !hasParent {
 		// wtf? parent does not resolve?
 		return tree
 	}
-	
+
 	parentDir, isDir := parentNode.(*fs.Dir)
 	if !isDir {
 		// wat
 		return tree
 	}
-	
+
 	switch newNode.(type) {
 	case *fs.Dir:
 		parentDir.SubDirs = append(parentDir.SubDirs, newNode.(*fs.Dir))
 	case *fs.File:
 		parentDir.Files = append(parentDir.Files, newNode.(*fs.File))
 	}
-	
+
 	if hasOld {
 		switch oldNode.(type) {
 		case *fs.Dir:
