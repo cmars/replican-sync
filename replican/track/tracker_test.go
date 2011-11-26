@@ -1,54 +1,22 @@
 package track
 
 import (
-	//	"fmt"
-	//	"log"
+	"bytes"
+	"fmt"
+	"gob"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/cmars/replican-sync/replican/fs"
 	"github.com/cmars/replican-sync/replican/sync"
 	"github.com/cmars/replican-sync/replican/treegen"
 
 	"github.com/bmizerany/assert"
 )
 
-func TestPollerInit(t *testing.T) {
-	tg := treegen.New()
-	treeSpec := tg.D("root",
-		tg.D("the jesus lizard",
-			tg.D("goat",
-				tg.F("then comes dudley", tg.B(78976, 655370)),
-				tg.F("rodeo in joliet", tg.B(6712, 12891)),
-				tg.F("south mouth", tg.B(1214, 123143)))),
-		tg.D("sonic youth",
-			tg.D("daydream nation",
-				tg.F("teenage riot", tg.B(12903, 219301)),
-				tg.F("cross the breeze", tg.B(13421, 219874)),
-				tg.F("rain king", tg.B(2141221, 21321)))))
-	path := treegen.TestTree(t, treeSpec)
-	poller := NewPoller(filepath.Join(path, "root"), 1, nil /*os.Stdout*/ )
-
-	halt := time.After(3000000000)
-
-	respPaths := []string{}
-TESTING:
-	for {
-		select {
-		case paths := <-poller.Changed:
-			respPaths = append(respPaths, paths...)
-		case _ = <-halt:
-			poller.Stop()
-			break TESTING
-		}
-	}
-
-	assert.Equalf(t, 1, len(respPaths), "%v", respPaths)
-	assert.Equal(t, filepath.Join(path, "root"), respPaths[0])
-}
-
-func TestPollerResponse(t *testing.T) {
+func TestTrackerResponse(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("root",
 		tg.D("the jesus lizard",
@@ -68,10 +36,13 @@ func TestPollerResponse(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	poller := NewPoller(filepath.Join(path, "root"), 1, nil /*os.Stdout*/ )
 	defer poller.Stop()
+	tracker := NewTracker(poller, StdLog())
+	defer tracker.Stop()
 
-	expectRoot := <-poller.Changed
-	assert.Equal(t, filepath.Join(path, "root"), expectRoot[0])
-
+	fmt.Printf("before patch1:\n")
+	fmt.Printf("%v\n", fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil))
+	fmt.Printf("\n")
+	
 	// Append some bytes to a file, using replican sync.
 	treeSpec = tg.D("root",
 		tg.D("the jesus lizard",
@@ -80,24 +51,36 @@ func TestPollerResponse(t *testing.T) {
 	patchPath1 := treegen.TestTree(t, treeSpec)
 	err := sync.Sync(patchPath1, path)
 	assert.Tf(t, err == nil, "%v", err)
-
+	
+	patchTree1 := fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil)
+	
 	// Give the poller 3s to find the change
 	halt := time.After(3000000000)
-	patchResult1 := []string{}
+	patchResults := []*fs.Dir{}
 POLL1:
 	for {
 		select {
-		case paths := <-poller.Changed:
-			patchResult1 = append(patchResult1, paths...)
+		case treedata := <-tracker.Trees:
+			decoder := gob.NewDecoder(bytes.NewBuffer(treedata))
+			patchResult := &fs.Dir{}
+			err = decoder.Decode(patchResult)
+			assert.Tf(t, err == nil, "%v", err)
+			patchResults = append(patchResults, patchResult)
 		case _ = <-halt:
 			break POLL1
 		}
 	}
 
-	assert.Equal(t, 1, len(patchResult1))
-	assert.Equal(t,
-		filepath.Join(path, "root", "the jesus lizard", "goat"),
-		patchResult1[0])
+	fmt.Printf("after patch1:\n")
+	fmt.Printf("%v\n", patchTree1)
+	fmt.Printf("\n")
+	
+	fmt.Printf("tracker reports from patch1:\n")
+	fmt.Printf("%v\n", patchResults[0])
+	fmt.Printf("\n")
+	
+	assert.Equal(t, 1, len(patchResults))
+	assert.Equal(t, patchTree1.Strong(), patchResults[0].Strong())
 
 	// Delete a file, see if scanner finds it
 	rr := []string{path, "root", "rick astley", "greatest hits",
@@ -105,20 +88,25 @@ POLL1:
 	err = os.Remove(filepath.Join(rr...))
 	assert.T(t, err == nil)
 
+	patchTree2 := fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil)
+	
 	halt = time.After(3000000000)
-	patchResult2 := []string{}
+	patchResults2 := []*fs.Dir{}
 POLL2:
 	for {
 		select {
-		case paths := <-poller.Changed:
-			patchResult2 = append(patchResult2, paths...)
+		case treedata := <-tracker.Trees:
+			decoder := gob.NewDecoder(bytes.NewBuffer(treedata))
+			patchResult := &fs.Dir{}
+			err = decoder.Decode(patchResult)
+			assert.Tf(t, err == nil, "%v", err)
+			
+			patchResults2 = append(patchResults2, patchResult)
 		case _ = <-halt:
 			break POLL2
 		}
 	}
 
-	assert.Equal(t, 1, len(patchResult2))
-	assert.Equal(t, filepath.Join(rr[:4]...), patchResult2[0])
-
-	poller.Stop()
+	assert.Equal(t, 1, len(patchResults2))
+	assert.Equal(t, patchTree2.Strong(), patchResults2[0].Strong())
 }

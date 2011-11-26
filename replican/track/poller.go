@@ -1,8 +1,6 @@
 package track
 
 import (
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,21 +17,20 @@ type Poller struct {
 	changed   map[string]bool
 	exit      chan bool
 	timer     *time.Timer
-	log       *log.Logger
+	Log       *log.Logger
 }
 
-func NewPoller(root string, period int, writer io.Writer) *Poller {
-	if writer == nil {
-		writer = ioutil.Discard
+func NewPoller(root string, period int, log *log.Logger) *Poller {
+	if log == nil {
+		log = NullLog()
 	}
-
 	poller := &Poller{
 		Root:      filepath.Clean(root),
 		Changed:   make(chan []string, 20),
 		period_ns: int64(period) * 1000000000,
 		mtimes:    make(map[string]int64),
 		exit:      make(chan bool, 1),
-		log:       log.New(writer, "", log.LstdFlags|log.Lshortfile)}
+		Log:       log}
 	go poller.run()
 	return poller
 }
@@ -59,16 +56,16 @@ func (poller *Poller) visit(path string, f *os.FileInfo) {
 	if !has || f.Mtime_ns > curMtime {
 		poller.mtimes[path] = f.Mtime_ns
 		poller.changed[path] = true
-		poller.log.Printf("changed: %s", path)
+		poller.Log.Printf("changed: %s", path)
 	}
 }
 
 func (poller *Poller) Poll() {
 	poller.changed = make(map[string]bool)
 
-	poller.log.Printf("begin scan")
+	poller.Log.Printf("begin scan")
 	filepath.Walk(poller.Root, poller, nil)
-	poller.log.Printf("scan complete")
+	poller.Log.Printf("scan complete")
 
 	// Prune redundant entries.
 	// Bounded by O(N*M) 
@@ -77,15 +74,17 @@ func (poller *Poller) Poll() {
 	// (best case: NlogN, worst case: N^2)
 	sendPaths := []string{}
 	for path, _ := range poller.changed {
-		poller.log.Printf("check %s", path)
+		poller.Log.Printf("check %s", path)
 
 		if !poller.hasChangedParent(path) {
 			sendPaths = append(sendPaths, path)
 		}
 	}
-
-	poller.log.Printf("send: %s", sendPaths)
-	poller.Changed <- sendPaths
+	
+	if len(sendPaths) > 0 {
+		poller.Log.Printf("send: %s", sendPaths)
+		poller.Changed <- sendPaths
+	}
 }
 
 func (poller *Poller) hasChangedParent(path string) bool {
@@ -110,6 +109,7 @@ RUNNING:
 			break RUNNING
 		}
 	}
+	poller.Log.Printf("exit")
 	poller.exit = nil
 	close(poller.Changed)
 }

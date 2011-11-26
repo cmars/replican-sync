@@ -125,15 +125,10 @@ func IncludeAll(path string, f *os.FileInfo) bool { return true }
 
 // Build a hierarchical tree model representing a directory's contents
 func IndexDir(path string, filter IndexFilter, errors chan<- os.Error) *Dir {
-	control := make(chan bool)
 	visitor := newVisitor(path, filter)
 	visitor.errors = errors
 
-	go func() {
-		filepath.Walk(path, visitor, errors)
-		close(control)
-	}()
-	<-control
+	filepath.Walk(path, visitor, errors)
 
 	if visitor.root != nil {
 		visitor.root.Strong()

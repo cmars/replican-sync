@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"path/filepath"
+	"sort"
 )
 
 // Block size used for checksum, comparison, transmitting deltas.
@@ -145,6 +146,10 @@ func (dir *Dir) fsParent() FsNode { return dir.parent }
 // Represent the directory's distinct deep contents as a byte array.
 // Inspired by skimming over git internals.
 func (dir *Dir) stringBytes() []byte {
+	// Sort the files and subdirectories for repeatable strong checksum
+	sort.Sort(&DirSlice{ dirs: dir.SubDirs })
+	sort.Sort(&FileSlice{ files: dir.Files })
+	
 	buf := bytes.NewBufferString("")
 
 	for _, subdir := range dir.SubDirs {
@@ -205,6 +210,19 @@ func (dir *Dir) Item(name string) (FsNode, bool) {
 	return nil, false
 }
 
+// Recalculate strong checksums for the entire tree.
+func (dir *Dir) UpdateStrong() string {
+	Walk(dir, func(node Node) bool {
+		visitDir, isDir := node.(*Dir)
+		if isDir {
+			visitDir.strong = ""
+			return true
+		}
+		return false
+	})
+	return dir.Strong()
+}
+
 // Visitor function to traverse a hierarchical tree model.
 type NodeVisitor func(Node) bool
 
@@ -233,4 +251,36 @@ func Walk(node Node, visitor NodeVisitor) {
 
 		}
 	}
+}
+
+type FileSlice struct {
+	files []*File
+}
+
+func (fs *FileSlice) Len() int {
+	return len(fs.files)
+}
+
+func (fs *FileSlice) Less(i, j int) bool {
+	return fs.files[i].name < fs.files[j].name
+}
+
+func (fs *FileSlice) Swap(i, j int) {
+	fs.files[i], fs.files[j] = fs.files[j], fs.files[i]
+}
+
+type DirSlice struct {
+	dirs []*Dir
+}
+
+func (ds *DirSlice) Len() int {
+	return len(ds.dirs)
+}
+
+func (ds *DirSlice) Less(i, j int) bool {
+	return ds.dirs[i].name < ds.dirs[j].name
+}
+
+func (ds *DirSlice) Swap(i, j int) {
+	ds.dirs[i], ds.dirs[j] = ds.dirs[j], ds.dirs[i]
 }
