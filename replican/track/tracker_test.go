@@ -2,7 +2,6 @@ package track
 
 import (
 	"bytes"
-	"fmt"
 	"gob"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 )
 
 func TestTrackerResponse(t *testing.T) {
+	log := NullLog()
 	tg := treegen.New()
 	treeSpec := tg.D("root",
 		tg.D("the jesus lizard",
@@ -34,14 +34,19 @@ func TestTrackerResponse(t *testing.T) {
 				tg.F("total trash", tg.B(70780, 90707)),
 				tg.F("rain king", tg.B(2141221, 21321)))))
 	path := treegen.TestTree(t, treeSpec)
-	poller := NewPoller(filepath.Join(path, "root"), 1, nil /*os.Stdout*/ )
+	poller := NewPoller(filepath.Join(path, "root"), 1, NullLog())
 	defer poller.Stop()
-	tracker := NewTracker(poller, StdLog())
+	tracker := NewTracker(poller, NullLog())
 	defer tracker.Stop()
-
-	fmt.Printf("before patch1:\n")
-	fmt.Printf("%v\n", fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil))
-	fmt.Printf("\n")
+	
+	// When the tracker first starts up, it will get a scan of the entire root
+	firstData := <-tracker.Trees
+	firstRoot, err := fs.DecodeDir(firstData)
+	log.Printf("Got initial root from tracker: %s", firstRoot.Strong())
+	
+	log.Printf("before patch1:\n")
+	log.Printf("%v\n", fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil))
+	log.Printf("\n")
 	
 	// Append some bytes to a file, using replican sync.
 	treeSpec = tg.D("root",
@@ -49,7 +54,7 @@ func TestTrackerResponse(t *testing.T) {
 			tg.D("goat",
 				tg.F("then comes dudley", tg.B(78976, 655370), tg.B(9090, 100100)))))
 	patchPath1 := treegen.TestTree(t, treeSpec)
-	err := sync.Sync(patchPath1, path)
+	err = sync.Sync(patchPath1, path)
 	assert.Tf(t, err == nil, "%v", err)
 	
 	patchTree1 := fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil)
@@ -61,9 +66,7 @@ POLL1:
 	for {
 		select {
 		case treedata := <-tracker.Trees:
-			decoder := gob.NewDecoder(bytes.NewBuffer(treedata))
-			patchResult := &fs.Dir{}
-			err = decoder.Decode(patchResult)
+			patchResult, err := fs.DecodeDir(treedata)
 			assert.Tf(t, err == nil, "%v", err)
 			patchResults = append(patchResults, patchResult)
 		case _ = <-halt:
@@ -71,13 +74,13 @@ POLL1:
 		}
 	}
 
-	fmt.Printf("after patch1:\n")
-	fmt.Printf("%v\n", patchTree1)
-	fmt.Printf("\n")
+	log.Printf("after patch1:\n")
+	log.Printf("%v\n", patchTree1)
+	log.Printf("\n")
 	
-	fmt.Printf("tracker reports from patch1:\n")
-	fmt.Printf("%v\n", patchResults[0])
-	fmt.Printf("\n")
+	log.Printf("tracker reports from patch1:\n")
+	log.Printf("%v\n", patchResults[0])
+	log.Printf("\n")
 	
 	assert.Equal(t, 1, len(patchResults))
 	assert.Equal(t, patchTree1.Strong(), patchResults[0].Strong())
@@ -87,8 +90,11 @@ POLL1:
 		"never gonna give you up"}
 	err = os.Remove(filepath.Join(rr...))
 	assert.T(t, err == nil)
-
+	
+	// Independent verification
 	patchTree2 := fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil)
+	_, hasRR := patchTree2.Resolve(filepath.Join(rr[2:]...))
+	assert.T(t, !hasRR)
 	
 	halt = time.After(3000000000)
 	patchResults2 := []*fs.Dir{}
@@ -109,4 +115,6 @@ POLL2:
 
 	assert.Equal(t, 1, len(patchResults2))
 	assert.Equal(t, patchTree2.Strong(), patchResults2[0].Strong())
+	
+	tracker.Stop()
 }

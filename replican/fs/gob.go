@@ -215,3 +215,10 @@ func (dir *Dir) GobEncode() ([]byte, os.Error) {
 
 	return buffer.Bytes(), nil
 }
+
+func DecodeDir(data []byte) (dir *Dir, err os.Error) {
+	decoder := gob.NewDecoder(bytes.NewBuffer(data))
+	dir = &Dir{}
+	err = decoder.Decode(dir)
+	return dir, err
+}

@@ -66,7 +66,7 @@ func TestPollerResponse(t *testing.T) {
 				tg.F("total trash", tg.B(70780, 90707)),
 				tg.F("rain king", tg.B(2141221, 21321)))))
 	path := treegen.TestTree(t, treeSpec)
-	poller := NewPoller(filepath.Join(path, "root"), 1, nil /*os.Stdout*/ )
+	poller := NewPoller(filepath.Join(path, "root"), 1, NullLog())
 	defer poller.Stop()
 
 	expectRoot := <-poller.Changed
