@@ -12,7 +12,7 @@ const watchMask = (inotify.IN_CREATE | inotify.IN_DELETE |
 	inotify.IN_DELETE_SELF | inotify.IN_MODIFY |
 	inotify.IN_MOVE | inotify.IN_MOVE_SELF)
 
-type Watcher struct {
+type FsWatcher struct {
 	*inotify.Watcher
 	Root          string
 	updateChan    chan string
@@ -20,22 +20,22 @@ type Watcher struct {
 	exit          chan bool
 }
 
-func (watcher *Watcher) VisitDir(path string, f *os.FileInfo) bool {
+func (watcher *FsWatcher) VisitDir(path string, f *os.FileInfo) bool {
 	watcher.AddWatch(path, inotify.IN_ONLYDIR)
 	return true
 }
 
-func (watcher *Watcher) VisitFile(path string, f *os.FileInfo) {
+func (watcher *FsWatcher) VisitFile(path string, f *os.FileInfo) {
 
 }
 
-func NewWatcher(root string, period int) (*Watcher, os.Error) {
+func NewWatcher(root string, period int) (*FsWatcher, os.Error) {
 	inotifyWatcher, err := inotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
-	watcher := &Watcher{
+	watcher := &FsWatcher{
 		Watcher:       inotifyWatcher,
 		Root:          root,
 		updateChan:    make(chan string),
@@ -49,7 +49,7 @@ func NewWatcher(root string, period int) (*Watcher, os.Error) {
 	return watcher, nil
 }
 
-func (watcher *Watcher) run() {
+func (watcher *FsWatcher) run() {
 	for {
 		select {
 		case ev := <-watcher.Event:
@@ -75,7 +75,7 @@ func (watcher *Watcher) run() {
 // Create a goroutine that settles a path.
 // It waits for a given path to stop recieving updates for 
 // a given 
-func (watcher *Watcher) newSettlePath(path string) chan *inotify.Event {
+func (watcher *FsWatcher) newSettlePath(path string) chan *inotify.Event {
 	incoming := make(chan *inotify.Event)
 	timer := time.NewTimer(15 * 1000000000)
 	go func() {

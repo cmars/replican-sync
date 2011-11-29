@@ -36,7 +36,7 @@ func TestPollerInit(t *testing.T) {
 TESTING:
 	for {
 		select {
-		case paths := <-poller.Changed:
+		case paths := <-poller.Changes():
 			respPaths = append(respPaths, paths...)
 		case _ = <-halt:
 			poller.Stop()
@@ -69,7 +69,7 @@ func TestPollerResponse(t *testing.T) {
 	poller := NewPoller(filepath.Join(path, "root"), 1, NullLog())
 	defer poller.Stop()
 
-	expectRoot := <-poller.Changed
+	expectRoot := <-poller.Changes()
 	assert.Equal(t, filepath.Join(path, "root"), expectRoot[0])
 
 	// Append some bytes to a file, using replican sync.
@@ -87,7 +87,7 @@ func TestPollerResponse(t *testing.T) {
 POLL1:
 	for {
 		select {
-		case paths := <-poller.Changed:
+		case paths := <-poller.Changes():
 			patchResult1 = append(patchResult1, paths...)
 		case _ = <-halt:
 			break POLL1
@@ -110,7 +110,7 @@ POLL1:
 POLL2:
 	for {
 		select {
-		case paths := <-poller.Changed:
+		case paths := <-poller.Changes():
 			patchResult2 = append(patchResult2, paths...)
 		case _ = <-halt:
 			break POLL2

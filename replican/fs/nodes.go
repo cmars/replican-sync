@@ -147,9 +147,9 @@ func (dir *Dir) fsParent() FsNode { return dir.parent }
 // Inspired by skimming over git internals.
 func (dir *Dir) stringBytes() []byte {
 	// Sort the files and subdirectories for repeatable strong checksum
-	sort.Sort(&DirSlice{ dirs: dir.SubDirs })
-	sort.Sort(&FileSlice{ files: dir.Files })
-	
+	sort.Sort(&DirSlice{dirs: dir.SubDirs})
+	sort.Sort(&FileSlice{files: dir.Files})
+
 	buf := bytes.NewBufferString("")
 
 	for _, subdir := range dir.SubDirs {

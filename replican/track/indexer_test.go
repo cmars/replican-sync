@@ -15,7 +15,7 @@ import (
 	"github.com/bmizerany/assert"
 )
 
-func TestTrackerResponse(t *testing.T) {
+func TestindexerResponse(t *testing.T) {
 	log := NullLog()
 	tg := treegen.New()
 	treeSpec := tg.D("root",
@@ -36,18 +36,18 @@ func TestTrackerResponse(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	poller := NewPoller(filepath.Join(path, "root"), 1, NullLog())
 	defer poller.Stop()
-	tracker := NewTracker(poller, NullLog())
-	defer tracker.Stop()
-	
-	// When the tracker first starts up, it will get a scan of the entire root
-	firstData := <-tracker.Trees
+	indexer := NewIndexer(poller, NullLog())
+	defer indexer.Stop()
+
+	// When the indexer first starts up, it will get a scan of the entire root
+	firstData := <-indexer.Trees
 	firstRoot, err := fs.DecodeDir(firstData)
-	log.Printf("Got initial root from tracker: %s", firstRoot.Strong())
-	
+	log.Printf("Got initial root from indexer: %s", firstRoot.Strong())
+
 	log.Printf("before patch1:\n")
-	log.Printf("%v\n", fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil))
+	log.Printf("%v\n", fs.IndexDir(filepath.Join(path, "root"), indexer.Filter, nil))
 	log.Printf("\n")
-	
+
 	// Append some bytes to a file, using replican sync.
 	treeSpec = tg.D("root",
 		tg.D("the jesus lizard",
@@ -56,16 +56,16 @@ func TestTrackerResponse(t *testing.T) {
 	patchPath1 := treegen.TestTree(t, treeSpec)
 	err = sync.Sync(patchPath1, path)
 	assert.Tf(t, err == nil, "%v", err)
-	
-	patchTree1 := fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil)
-	
+
+	patchTree1 := fs.IndexDir(filepath.Join(path, "root"), indexer.Filter, nil)
+
 	// Give the poller 3s to find the change
 	halt := time.After(3000000000)
 	patchResults := []*fs.Dir{}
 POLL1:
 	for {
 		select {
-		case treedata := <-tracker.Trees:
+		case treedata := <-indexer.Trees:
 			patchResult, err := fs.DecodeDir(treedata)
 			assert.Tf(t, err == nil, "%v", err)
 			patchResults = append(patchResults, patchResult)
@@ -77,11 +77,11 @@ POLL1:
 	log.Printf("after patch1:\n")
 	log.Printf("%v\n", patchTree1)
 	log.Printf("\n")
-	
-	log.Printf("tracker reports from patch1:\n")
+
+	log.Printf("indexer reports from patch1:\n")
 	log.Printf("%v\n", patchResults[0])
 	log.Printf("\n")
-	
+
 	assert.Equal(t, 1, len(patchResults))
 	assert.Equal(t, patchTree1.Strong(), patchResults[0].Strong())
 
@@ -90,23 +90,23 @@ POLL1:
 		"never gonna give you up"}
 	err = os.Remove(filepath.Join(rr...))
 	assert.T(t, err == nil)
-	
+
 	// Independent verification
-	patchTree2 := fs.IndexDir(filepath.Join(path, "root"), tracker.Filter, nil)
+	patchTree2 := fs.IndexDir(filepath.Join(path, "root"), indexer.Filter, nil)
 	_, hasRR := patchTree2.Resolve(filepath.Join(rr[2:]...))
 	assert.T(t, !hasRR)
-	
+
 	halt = time.After(3000000000)
 	patchResults2 := []*fs.Dir{}
 POLL2:
 	for {
 		select {
-		case treedata := <-tracker.Trees:
+		case treedata := <-indexer.Trees:
 			decoder := gob.NewDecoder(bytes.NewBuffer(treedata))
 			patchResult := &fs.Dir{}
 			err = decoder.Decode(patchResult)
 			assert.Tf(t, err == nil, "%v", err)
-			
+
 			patchResults2 = append(patchResults2, patchResult)
 		case _ = <-halt:
 			break POLL2
@@ -115,6 +115,6 @@ POLL2:
 
 	assert.Equal(t, 1, len(patchResults2))
 	assert.Equal(t, patchTree2.Strong(), patchResults2[0].Strong())
-	
-	tracker.Stop()
+
+	indexer.Stop()
 }

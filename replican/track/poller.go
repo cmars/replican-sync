@@ -10,8 +10,8 @@ import (
 // Periodically polls a directory tree for changes in 
 // file and directory modified times.
 type Poller struct {
-	Root      string
-	Changed   chan []string
+	root      string
+	changes   chan []string
 	period_ns int64
 	mtimes    map[string]int64
 	changed   map[string]bool
@@ -25,14 +25,22 @@ func NewPoller(root string, period int, log *log.Logger) *Poller {
 		log = NullLog()
 	}
 	poller := &Poller{
-		Root:      filepath.Clean(root),
-		Changed:   make(chan []string, 20),
+		root:      filepath.Clean(root),
+		changes:   make(chan []string, 20),
 		period_ns: int64(period) * 1000000000,
 		mtimes:    make(map[string]int64),
 		exit:      make(chan bool, 1),
 		Log:       log}
 	go poller.run()
 	return poller
+}
+
+func (poller *Poller) Root() string {
+	return poller.root
+}
+
+func (poller *Poller) Changes() chan []string {
+	return poller.changes
 }
 
 func (poller *Poller) Stop() {
@@ -64,7 +72,7 @@ func (poller *Poller) Poll() {
 	poller.changed = make(map[string]bool)
 
 	poller.Log.Printf("begin scan")
-	filepath.Walk(poller.Root, poller, nil)
+	filepath.Walk(poller.root, poller, nil)
 	poller.Log.Printf("scan complete")
 
 	// Prune redundant entries.
@@ -80,10 +88,10 @@ func (poller *Poller) Poll() {
 			sendPaths = append(sendPaths, path)
 		}
 	}
-	
+
 	if len(sendPaths) > 0 {
 		poller.Log.Printf("send: %s", sendPaths)
-		poller.Changed <- sendPaths
+		poller.changes <- sendPaths
 	}
 }
 
@@ -111,5 +119,5 @@ RUNNING:
 	}
 	poller.Log.Printf("exit")
 	poller.exit = nil
-	close(poller.Changed)
+	close(poller.changes)
 }

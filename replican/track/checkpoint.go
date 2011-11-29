@@ -154,6 +154,30 @@ func (log *LocalCkptLog) Head() (Checkpoint, os.Error) {
 	return log.Checkpoint(log.head)
 }
 
+func (log *LocalCkptLog) Append(root *fs.Dir) (Checkpoint, os.Error) {
+	ckpt := &LocalCkpt{log: log, root: root}
+
+	sec, nsec, _ := os.Time()
+	ckpt.tstamp = sec*1000000000 + nsec
+
+	head, err := log.Head()
+	if err == nil && head.Strong() != "" {
+		if head.Strong() == root.Strong() {
+			return head, err
+		}
+
+		ckpt.parents = append(ckpt.parents, head)
+	}
+
+	err = ckpt.create()
+	if err != nil {
+		return ckpt, err
+	}
+
+	err = log.setHead(ckpt.Strong())
+	return ckpt, err
+}
+
 // Create a checkpoint of the current block store state 
 // and append to the head of the log. 
 func (log *LocalCkptLog) Snapshot() (Checkpoint, os.Error) {
