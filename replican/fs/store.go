@@ -12,11 +12,7 @@ import (
 
 // Provide access to the raw byte storage.
 type BlockStore interface {
-
-	// Get the root hierarchical index node
-	Root() FsNode
-
-	Index() *BlockIndex
+	Repo() NodeRepo
 
 	// Given a strong checksum of a block, get the bytes for that block.
 	ReadBlock(strong string) ([]byte, os.Error)
@@ -42,7 +38,7 @@ type LocalStore interface {
 
 type localBase struct {
 	rootPath string
-	index    *BlockIndex
+	repo     NodeRepo
 	relocs   map[string]string
 }
 
