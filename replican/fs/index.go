@@ -95,7 +95,6 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 		if dirinfo, err := os.Stat(dirpath); err == nil {
 			visitor.VisitDir(dirpath, dirinfo)
 
-			var hasParent bool
 			if fileParent, hasParent := visitor.dirMap[dirpath]; hasParent {
 				file.Info().Parent = fileParent.Info().Strong
 				visitor.repo.SetFile(file)

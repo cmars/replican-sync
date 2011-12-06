@@ -44,21 +44,21 @@ type localBase struct {
 
 type LocalDirStore struct {
 	*localBase
-	dir *Dir
+	dir Dir
 }
 
 type LocalFileStore struct {
 	*localBase
-	file *File
+	file File
 }
 
-func NewLocalStore(rootPath string) (local LocalStore, err os.Error) {
+func NewLocalStore(rootPath string, repo NodeRepo) (local LocalStore, err os.Error) {
 	rootInfo, err := os.Stat(rootPath)
 	if err != nil {
 		return nil, err
 	}
 
-	localBase := &localBase{rootPath: rootPath}
+	localBase := &localBase{rootPath: rootPath, repo: repo}
 	if rootInfo.IsDirectory() {
 		local = &LocalDirStore{localBase: localBase}
 	} else if rootInfo.IsRegular() {
@@ -75,22 +75,20 @@ func NewLocalStore(rootPath string) (local LocalStore, err os.Error) {
 }
 
 func (store *LocalDirStore) reindex() (err os.Error) {
-	store.dir = IndexDir(store.RootPath(), nil)
+	store.dir = IndexDir(store.RootPath(), store.repo, nil)
 	if store.dir == nil {
 		return os.NewError(fmt.Sprintf("Failed to reindex root: %s", store.RootPath()))
 	}
 
-	store.index = IndexBlocks(store.dir)
 	return nil
 }
 
 func (store *LocalFileStore) reindex() (err os.Error) {
-	store.file, err = IndexFile(store.RootPath())
+	store.file, err = IndexFile(store.RootPath(), store.repo)
 	if err != nil {
 		return err
 	}
 
-	store.index = IndexBlocks(store.file)
 	return nil
 }
 
@@ -142,21 +140,21 @@ func (store *localBase) Resolve(relpath string) string {
 
 func (store *localBase) RootPath() string { return store.rootPath }
 
+func (store *localBase) Repo() NodeRepo { return store.repo }
+
 func (store *LocalDirStore) Root() FsNode { return store.dir }
 
 func (store *LocalFileStore) Root() FsNode { return store.file }
 
-func (store *localBase) Index() *BlockIndex { return store.index }
-
 func (store *localBase) ReadBlock(strong string) ([]byte, os.Error) {
-	block, has := store.index.StrongBlock(strong)
+	block, has := store.repo.GetBlock(strong)
 	if !has {
 		return nil, os.NewError(
 			fmt.Sprintf("Block with strong checksum %s not found", strong))
 	}
 
 	buf := &bytes.Buffer{}
-	_, err := store.ReadInto(block.Parent().Strong(), block.Offset(), int64(BLOCKSIZE), buf)
+	_, err := store.ReadInto(block.Info().Strong, block.Info().Offset(), int64(BLOCKSIZE), buf)
 	if err == nil {
 		return nil, err
 	}
@@ -166,7 +164,7 @@ func (store *localBase) ReadBlock(strong string) ([]byte, os.Error) {
 
 func (store *localBase) ReadInto(strong string, from int64, length int64, writer io.Writer) (int64, os.Error) {
 
-	file, has := store.index.StrongFile(strong)
+	file, has := store.repo.GetFile(strong)
 	if !has {
 		return 0,
 			os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))

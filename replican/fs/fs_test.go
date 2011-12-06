@@ -1,8 +1,6 @@
 package fs
 
 import (
-	"bytes"
-	"gob"
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/treegen"
@@ -12,54 +10,66 @@ import (
 	"github.com/bmizerany/assert"
 )
 
-func testIndexSomeMp3(t *testing.T) {
-	var f *File
+func TestIndexSomeMp3(t *testing.T) {
+	DoTestIndexSomeMp3(t, NewMemRepo())
+}
+
+func DoTestIndexSomeMp3(t *testing.T, repo NodeRepo) {
+	var f File
 	var err os.Error
 
 	cwd, _ := os.Getwd()
 	t.Logf("CWD=%s", cwd)
 
-	f, err = IndexFile("../../testroot/My Music/0 10k 30.mp4")
+	f, err = IndexFile("../../testroot/My Music/0 10k 30.mp4", repo)
 	if f == nil {
 		t.Fatalf("Failed to index file: %s", err.String())
 	}
 
-	assert.Equal(t, "5ab3e5d621402e5894429b5f595a1e2d7e1b3078", f.Strong())
-	assert.Equal(t, "d1f11a93449fa4d3f320234743204ce157bbf1f3", f.Blocks[0].Strong())
-	assert.Equal(t, "eabbe570b21cd2c5101a18b51a3174807fa5c0da", f.Blocks[1].Strong())
+	assert.Equal(t, "5ab3e5d621402e5894429b5f595a1e2d7e1b3078", f.Info().Strong)
+	assert.Equal(t, "d1f11a93449fa4d3f320234743204ce157bbf1f3", f.Blocks()[0].Info().Strong)
+	assert.Equal(t, "eabbe570b21cd2c5101a18b51a3174807fa5c0da", f.Blocks()[1].Info().Strong)
 }
 
-func testDirIndex(t *testing.T) {
-	dir := IndexDir("testroot/", nil)
+func TestDirIndex(t *testing.T) {
+	DoTestDirIndex(t, NewMemRepo())
+}
 
-	assert.Equal(t, "10dc111ed3edd17ac89e303e877874aa61b45434", dir.Strong())
+func DoTestDirIndex(t *testing.T, repo NodeRepo) {
+	dir := IndexDir("testroot/", repo, nil)
 
-	var myMusic *Dir = dir.SubDirs[0]
+	assert.Equal(t, "10dc111ed3edd17ac89e303e877874aa61b45434", dir.Info().Strong)
+
+	var myMusic Dir = dir.SubDirs()[0]
 	assert.Equal(t, "My Music", myMusic.Name())
 
 	for i := 0; i < 2; i++ {
-		var mp4file FsNode = myMusic.Files[i]
+		var mp4file FsNode = myMusic.Files()[i]
 		assert.Tf(t, strings.HasPrefix(mp4file.Name(), "0 10k 30"),
 			"Unexpected d -> d -> f name: %s", mp4file.Name())
 	}
 }
 
-func testVisitDirsOnly(t *testing.T) {
-	dir := IndexDir("../../testroot/", nil)
+func TestVisitDirsOnly(t *testing.T) {
+	DoTestVisitDirsOnly(t, NewMemRepo())
+}
 
-	collect := []*Dir{}
+func DoTestVisitDirsOnly(t *testing.T, repo NodeRepo) {
+	dir := IndexDir("../../testroot/", repo, nil)
+
+	collect := []Dir{}
 	visited := []Node{}
 
 	Walk(dir, func(node Node) bool {
 		visited = append(visited, node)
 
-		d, ok := node.(*Dir)
+		d, ok := node.(Dir)
 		if ok {
 			collect = append(collect, d)
 			return true
 		}
 
-		_, ok = node.(*File)
+		_, ok = node.(File)
 		if ok {
 			return false
 		}
@@ -71,20 +81,24 @@ func testVisitDirsOnly(t *testing.T) {
 	assert.Equalf(t, 3, len(collect), "Unexpected dirs in testroot/: %v", collect)
 
 	for _, node := range visited {
-		_, ok := node.(*Block)
+		_, ok := node.(Block)
 		if ok {
 			t.Fatalf("Should not have gotten a block, we told visitor to stop at file level.")
 		}
 	}
 }
 
-func testVisitBlocks(t *testing.T) {
-	dir := IndexDir("../../testroot/", nil)
+func TestVisitBlocks(t *testing.T) {
+	DoTestVisitBlocks(t, NewMemRepo())
+}
 
-	collect := []*Block{}
+func DoTestVisitBlocks(t *testing.T, repo NodeRepo) {
+	dir := IndexDir("../../testroot/", repo, nil)
+
+	collect := []Block{}
 
 	Walk(dir, func(node Node) bool {
-		b, ok := node.(*Block)
+		b, ok := node.(Block)
 		if ok {
 			collect = append(collect, b)
 		}
@@ -94,7 +108,7 @@ func testVisitBlocks(t *testing.T) {
 
 	matched := false
 	for _, block := range collect {
-		if block.Strong() == "d1f11a93449fa4d3f320234743204ce157bbf1f3" {
+		if block.Info().Strong == "d1f11a93449fa4d3f320234743204ce157bbf1f3" {
 			matched = true
 		}
 	}
@@ -103,29 +117,37 @@ func testVisitBlocks(t *testing.T) {
 }
 
 func TestNodeRelPath(t *testing.T) {
+	DoTestNodeRelPath(t, NewMemRepo())
+}
+
+func DoTestNodeRelPath(t *testing.T, repo NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := IndexDir(path, nil)
+	dir := IndexDir(path, repo, nil)
 
 	assert.Equal(t, "", RelPath(dir))
-	assert.Equal(t, "foo", RelPath(dir.SubDirs[0]))
-	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs[0].Files[0]))
+	assert.Equal(t, "foo", RelPath(dir.SubDirs()[0]))
+	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs()[0].Files()[0]))
 
-	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs[0].Files[0]))
+	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs()[0].Files()[0]))
 }
 
 func TestStoreRelPath(t *testing.T) {
+	DoTestStoreRelPath(t, NewMemRepo())
+}
+
+func DoTestStoreRelPath(t *testing.T, repo NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	store, err := NewLocalStore(path)
+	store, err := NewLocalStore(path, repo)
 	assert.T(t, err == nil)
 
 	relFoo := store.RelPath(filepath.Join(path, "foo"))
@@ -149,6 +171,10 @@ func TestStoreRelPath(t *testing.T) {
 }
 
 func TestDirResolve(t *testing.T) {
+	DoTestDirResolve(t, NewMemRepo())
+}
+
+func DoTestDirResolve(t *testing.T, repo NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -175,33 +201,37 @@ func TestDirResolve(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), nil)
+	foo := IndexDir(filepath.Join(path, "foo"), repo, nil)
 
 	var node FsNode
 	var found bool
 
-	bar, exists := foo.Item("bar")
+	bar, exists := DirItem(foo, "bar")
 	assert.T(t, exists)
-	barDir, isDir := bar.(*Dir)
+	barDir, isDir := bar.(Dir)
 	assert.T(t, isDir, "barDir = %v", barDir)
 
-	node, found = foo.Resolve("bar")
+	node, found = DirLookup(foo, "bar")
 	assert.T(t, found)
-	_, isDir = node.(*Dir)
+	_, isDir = node.(Dir)
 	assert.T(t, isDir)
 
-	node, found = foo.Resolve(filepath.Join("bar", "aleph"))
+	node, found = DirLookup(foo, filepath.Join("bar", "aleph"))
 	assert.T(t, found)
-	_, isDir = node.(*Dir)
+	_, isDir = node.(Dir)
 	assert.T(t, isDir)
 
-	node, found = foo.Resolve(filepath.Join("bar", "aleph", "A"))
+	node, found = DirLookup(foo, filepath.Join("bar", "aleph", "A"))
 	assert.T(t, found)
-	_, isFile := node.(*File)
+	_, isFile := node.(File)
 	assert.T(t, isFile)
 }
 
 func TestDirDescent(t *testing.T) {
+	DoTestDirDescent(t, NewMemRepo())
+}
+
+func DoTestDirDescent(t *testing.T, repo NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.F("baobab", tg.B(91, 65537)),
@@ -213,78 +243,29 @@ func TestDirDescent(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := IndexDir(path, nil)
+	dir := IndexDir(path, repo, nil)
 
 	for _, fpath := range []string{
 		filepath.Join("foo", "baobab"),
 		filepath.Join("foo", "bar", "aleph", "a"),
 		filepath.Join("foo", "bar3003")} {
-		node, found := dir.Resolve(fpath)
+		node, found := DirLookup(dir, fpath)
 		assert.Tf(t, found, "not found: %s", fpath)
-		_, isFile := node.(*File)
+		_, isFile := node.(File)
 		assert.T(t, isFile)
 	}
 
-	node, found := dir.Resolve(filepath.Join("foo", "bar"))
+	node, found := DirLookup(dir, filepath.Join("foo", "bar"))
 	assert.T(t, found)
-	_, isDir := node.(*Dir)
+	_, isDir := node.(Dir)
 	assert.T(t, isDir)
 }
 
-func TestGobbable(t *testing.T) {
-	tg := treegen.New()
-	treeSpec := tg.D("foo",
-		tg.D("bar",
-			tg.D("aleph",
-				tg.F("A", tg.B(42, 65537)),
-				tg.F("a", tg.B(42, 65537))),
-			tg.D("beth",
-				tg.F("B", tg.B(43, 65537)),
-				tg.F("b", tg.B(43, 65537))),
-			tg.D("jimmy",
-				tg.F("G", tg.B(44, 65537)),
-				tg.F("g", tg.B(44, 65537)))),
-		tg.D("baz",
-			tg.D("uno",
-				tg.F("1", tg.B(1, 65537)),
-				tg.F("I", tg.B(1, 65537))),
-			tg.D("dos",
-				tg.F("2", tg.B(11, 65537)),
-				tg.F("II", tg.B(11, 65537))),
-			tg.D("tres",
-				tg.F("3", tg.B(111, 65537)),
-				tg.F("III", tg.B(111, 65537)))))
-
-	path := treegen.TestTree(t, treeSpec)
-	defer os.RemoveAll(path)
-
-	foo := IndexDir(filepath.Join(path, "foo"), nil)
-
-	node, found := foo.Resolve(filepath.Join("bar", "aleph", "A"))
-	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
-
-	bufferEnc := bytes.NewBuffer([]byte{})
-	encoder := gob.NewEncoder(bufferEnc)
-	err := encoder.Encode(foo)
-	assert.Tf(t, err == nil, "%v", err)
-
-	bufferDec := bytes.NewBuffer(bufferEnc.Bytes())
-	decoder := gob.NewDecoder(bufferDec)
-
-	decFoo := &Dir{}
-	err = decoder.Decode(decFoo)
-	assert.Tf(t, err == nil, "%v", err)
-
-	node, found = decFoo.Resolve(filepath.Join("bar", "aleph", "A"))
-	assert.T(t, found)
-	_, isFile := node.(*File)
-	assert.T(t, isFile)
-
-	assert.T(t, node.Parent() != nil)
-	assert.Equal(t, filepath.Join("bar", "aleph", "A"), RelPath(node))
+func TestParentRefs(t *testing.T) {
+	DoTestParentRefs(t, NewMemRepo())
 }
 
-func TestParentRefs(t *testing.T) {
+func DoTestParentRefs(t *testing.T, repo NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -311,23 +292,25 @@ func TestParentRefs(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), nil)
+	foo := IndexDir(filepath.Join(path, "foo"), repo, nil)
 	rootCount := 0
 	Walk(foo, func(node Node) bool {
 		switch node.(type) {
-		case *Dir:
-			dir := node.(*Dir)
-			if dir.IsRoot() {
+		case Dir:
+			dir := node.(Dir)
+			if _, isRoot := dir.Parent(); isRoot {
 				rootCount++
 			}
 			break
-		case *File:
-			file := node.(*File)
-			assert.T(t, file.parent != nil)
+		case File:
+			file := node.(File)
+			_, isRoot := file.Parent()
+			assert.T(t, !isRoot)
 			break
-		case *Block:
-			block := node.(*Block)
-			assert.T(t, block.parent != nil)
+		case Block:
+			block := node.(Block)
+			_, isRoot := block.Parent()
+			assert.T(t, !isRoot)
 			break
 		}
 		return true

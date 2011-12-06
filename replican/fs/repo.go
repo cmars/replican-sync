@@ -71,8 +71,9 @@ func (file *memFile) Repo() NodeRepo {
 func (file *memFile) Blocks() []Block {
 	blocks := []Block{}
 	for _, strong := range file.blocks {
-		block, has := file.repo.GetBlock(strong)
-		blocks = append(blocks, block)
+		if block, has := file.repo.GetBlock(strong); has {
+			blocks = append(blocks, block)
+		}
 	}
 	return blocks
 }
@@ -153,7 +154,7 @@ func (repo *MemRepo) NewDirID() string {
 }
 
 func (repo *MemRepo) CreateDir(info *DirInfo) Dir {
-	dir := &memDir{info: info, repo: repo}
+	return &memDir{info: info, repo: repo}
 }
 
 func (repo *MemRepo) GetWeakBlock(weak int) (block Block, has bool) {
