@@ -35,8 +35,8 @@ type FsNode interface {
 func RelPath(item FsNode) string {
 	parts := []string{}
 
-	_, isRoot := item.Parent()
-	for fsNode := item; !isRoot; fsNode, isRoot = fsNode.Parent() {
+	for fsNode, hasParent := item, true; hasParent; 
+			fsNode, hasParent = fsNode.Parent() {
 		parts = append([]string{fsNode.Name()}, parts...)
 	}
 
@@ -100,9 +100,29 @@ type DirInfo struct {
 
 // Calculate the strong checksum of a directory.
 func DirStrong(dir Dir) string {
+	repo := dir.Repo()
+	oldStrong := dir.Info().Strong
 	var sha1 = sha1.New()
 	sha1.Write(DirContents(dir))
-	return toHexString(sha1)
+	newStrong := toHexString(sha1)
+	
+	if oldStrong != newStrong {
+		for _, file := range repo.Files(oldStrong) {
+			fileInfo := file.Info()
+			fileInfo.Parent = newStrong
+			repo.SetFile(fileInfo)
+		}
+		for _, subdir := range repo.SubDirs(oldStrong) {
+			subdirInfo := subdir.Info()
+			subdirInfo.Parent = newStrong
+			repo.SetDir(subdirInfo)
+		}
+		dir.Info().Strong = newStrong
+		repo.SetDir(dir.Info())
+		repo.Remove(oldStrong)
+	}
+	
+	return newStrong
 }
 
 // Represent the directory's distinct deep contents as a byte array.
@@ -111,7 +131,7 @@ func DirContents(dir Dir) []byte {
 	buf := bytes.NewBufferString("")
 
 	for _, subdir := range dir.SubDirs() {
-		fmt.Fprintf(buf, "%s\td\t%s\n", subdir.Info().Strong, subdir.Name())
+		fmt.Fprintf(buf, "%s\td\t%s\n", DirStrong(subdir), subdir.Name())
 	}
 	for _, file := range dir.Files() {
 		fmt.Fprintf(buf, "%s\tf\t%s\n", file.Info().Strong, file.Name())

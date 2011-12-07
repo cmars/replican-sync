@@ -147,7 +147,7 @@ func (store *LocalDirStore) Root() FsNode { return store.dir }
 func (store *LocalFileStore) Root() FsNode { return store.file }
 
 func (store *localBase) ReadBlock(strong string) ([]byte, os.Error) {
-	block, has := store.repo.GetBlock(strong)
+	block, has := store.repo.Block(strong)
 	if !has {
 		return nil, os.NewError(
 			fmt.Sprintf("Block with strong checksum %s not found", strong))
@@ -164,7 +164,7 @@ func (store *localBase) ReadBlock(strong string) ([]byte, os.Error) {
 
 func (store *localBase) ReadInto(strong string, from int64, length int64, writer io.Writer) (int64, os.Error) {
 
-	file, has := store.repo.GetFile(strong)
+	file, has := store.repo.File(strong)
 	if !has {
 		return 0,
 			os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))

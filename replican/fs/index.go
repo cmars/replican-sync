@@ -75,12 +75,16 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 		dirname, basename := filepath.Split(path)
 		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
 
-		dir = visitor.repo.CreateDir(&DirInfo{
+		var parentStrong string
+		if parentDir, hasParent := visitor.dirMap[dirname]; hasParent {
+			parentStrong = parentDir.Info().Strong
+		}
+		
+		dir = visitor.repo.SetDir(&DirInfo{
 			Name:   basename,
 			Mode:   f.Mode,
-			Parent: visitor.dirMap[dirname].Info().Strong})
+			Parent: parentStrong })
 		visitor.dirMap[path] = dir
-		visitor.repo.SetDir(dir)
 	}
 
 	return true
@@ -97,7 +101,7 @@ func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
 
 			if fileParent, hasParent := visitor.dirMap[dirpath]; hasParent {
 				file.Info().Parent = fileParent.Info().Strong
-				visitor.repo.SetFile(file)
+				visitor.repo.SetFile(file.Info())
 				return
 			} else if visitor.errors != nil {
 				visitor.errors <- os.NewError("cannot locate parent directory")
@@ -122,11 +126,7 @@ func IndexDir(path string, repo NodeRepo, errors chan<- os.Error) Dir {
 	}()
 	<-control
 
-	/*
-		if visitor.root != nil {
-			visitor.root.Info().Strong()
-		}
-	*/
+	DirStrong(visitor.root)
 
 	return visitor.root
 }
@@ -150,33 +150,32 @@ func IndexFile(path string, repo NodeRepo) (file File, err os.Error) {
 	defer f.Close()
 
 	_, basename := filepath.Split(path)
-	file = repo.CreateFile(&FileInfo{
+	fileInfo := &FileInfo{
 		Name: basename,
 		Mode: stat.Mode,
-		Size: stat.Size})
+		Size: stat.Size }
 
-	var block Block
+	var block *BlockInfo
 	sha1 := sha1.New()
 	blockNum := 0
-	blocks := []Block{}
+	blocks := []*BlockInfo{}
 
 	for {
 		switch rd, err := f.Read(buf[:]); true {
 		case rd < 0:
 			return nil, err
 		case rd == 0:
-			file.Info().Strong = toHexString(sha1)
-			repo.SetFile(file)
+			fileInfo.Strong = toHexString(sha1)
+			file = repo.SetFile(fileInfo)
 			for _, block := range blocks {
-				block.Info().Parent = file.Info().Strong
+				block.Parent = fileInfo.Strong
 				repo.SetBlock(block)
 			}
 			return file, nil
 		case rd > 0:
 			// Update block hashes
-			block = IndexBlock(buf[0:rd], repo)
-			block.Info().Position = blockNum
-			block.Info().Parent = file.Info().Strong
+			block = IndexBlock(buf[0:rd])
+			block.Position = blockNum
 			blocks = append(blocks, block)
 
 			// update file hash
@@ -204,13 +203,11 @@ func StrongChecksum(buf []byte) string {
 }
 
 // Model a block with weak and strong checksums.
-func IndexBlock(buf []byte, repo NodeRepo) (block Block) {
+func IndexBlock(buf []byte) *BlockInfo {
 	var weak = new(WeakChecksum)
 	weak.Write(buf)
 
-	block = repo.CreateBlock(&BlockInfo{
+	return &BlockInfo{
 		Weak:   weak.Get(),
-		Strong: StrongChecksum(buf)})
-
-	return block
+		Strong: StrongChecksum(buf) }
 }
