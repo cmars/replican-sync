@@ -7,7 +7,7 @@ import (
 )
 
 type BlockMatch struct {
-	SrcBlock  *fs.Block
+	SrcBlock  fs.Block
 	DstOffset int64
 }
 
@@ -27,8 +27,8 @@ func (r *RangePair) Size() int64 {
 }
 
 func Match(src string, dst string) (match *FileMatch, err os.Error) {
-	var srcFile *fs.File
-	srcFile, err = fs.IndexFile(src)
+	repo := fs.NewMemRepo()
+	srcFile, err := fs.IndexFile(src, repo)
 	if srcFile == nil {
 		return nil, err
 	}
@@ -37,18 +37,18 @@ func Match(src string, dst string) (match *FileMatch, err os.Error) {
 	return match, err
 }
 
-func MatchFile(srcFile *fs.File, dst string) (match *FileMatch, err os.Error) {
-	srcBlockIndex := fs.IndexBlocks(srcFile)
-
-	match, err = MatchIndex(srcBlockIndex, dst)
+/*
+func MatchFile(srcFile fs.File, dst string) (match *FileMatch, err os.Error) {
+	match, err = MatchIndex(srcFile, dst)
 	if match != nil {
 		match.SrcSize = srcFile.Size
 	}
 
 	return match, err
 }
+*/
 
-func MatchIndex(srcBlockIndex *fs.BlockIndex, dst string) (match *FileMatch, err os.Error) {
+func MatchFile(srcFile fs.File, dst string) (match *FileMatch, err os.Error) {
 	match = new(FileMatch)
 	var dstOffset int64
 
@@ -93,10 +93,10 @@ SCAN:
 
 			for {
 				// Check for a weak checksum match
-				if matchBlock, has := srcBlockIndex.WeakBlock(dstWeak.Get()); has {
+				if matchBlock, has := srcFile.Repo().WeakBlock(dstWeak.Get()); has {
 
 					// Double-check with the strong checksum
-					if fs.StrongChecksum(window[:blocksize]) == matchBlock.Strong() {
+					if fs.StrongChecksum(window[:blocksize]) == matchBlock.Info().Strong {
 
 						// We've got a block match in dest
 						match.BlockMatches = append(match.BlockMatches, &BlockMatch{

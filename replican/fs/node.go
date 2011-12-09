@@ -29,6 +29,9 @@ type FsNode interface {
 
 	// All FsNodes have names (file or directory name).
 	Name() string
+	
+	Mode() uint32
+	
 }
 
 // Given a filesystem node, calculate the relative path string to it from the root node.

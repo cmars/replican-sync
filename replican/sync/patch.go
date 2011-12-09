@@ -263,13 +263,13 @@ func (stc *SrcTempCopy) Exec(srcStore fs.BlockStore) os.Error {
 
 // Copy a range of data from the source file to the destination file.
 type SrcFileDownload struct {
-	SrcFile *fs.File
+	SrcFile fs.File
 	Path    PathRef
 	Length  int64
 }
 
 func (sfd *SrcFileDownload) String() string {
-	return fmt.Sprintf("Copy entire source %s to %s", sfd.SrcFile.Strong(), sfd.Path)
+	return fmt.Sprintf("Copy entire source %s to %s", sfd.SrcFile.Info().Strong, sfd.Path)
 }
 
 func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
@@ -282,14 +282,14 @@ func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
 		return err
 	}
 
-	_, err = srcStore.ReadInto(sfd.SrcFile.Strong(), 0, sfd.SrcFile.Size, dstFh)
+	_, err = srcStore.ReadInto(sfd.SrcFile.Info().Strong, 0, sfd.SrcFile.Info().Size, dstFh)
 	return err
 }
 
 type PatchPlan struct {
 	Cmds []PatchCmd
 
-	dstFileUnmatch map[string]*fs.File
+	dstFileUnmatch map[string]fs.File
 
 	srcStore fs.BlockStore
 	dstStore fs.LocalStore
@@ -298,11 +298,11 @@ type PatchPlan struct {
 func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 	plan := &PatchPlan{srcStore: srcStore, dstStore: dstStore}
 
-	plan.dstFileUnmatch = make(map[string]*fs.File)
+	plan.dstFileUnmatch = make(map[string]fs.File)
 
-	fs.Walk(dstStore.Root(), func(dstNode fs.Node) bool {
+	fs.Walk(dstStore.Repo().Root(), func(dstNode fs.Node) bool {
 
-		dstFile, isDstFile := dstNode.(*fs.File)
+		dstFile, isDstFile := dstNode.(fs.File)
 		if isDstFile {
 			plan.dstFileUnmatch[fs.RelPath(dstFile)] = dstFile
 		}
@@ -313,7 +313,7 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 	relocRefs := make(map[string]int)
 
 	// Find all the FsNode matches
-	fs.Walk(srcStore.Root(), func(srcNode fs.Node) bool {
+	fs.Walk(srcStore.Repo().Root(), func(srcNode fs.Node) bool {
 
 		// Ignore non-FsNodes
 		srcFsNode, isSrcFsNode := srcNode.(fs.FsNode)
@@ -321,17 +321,29 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 			return false
 		}
 
-		srcFile, isSrcFile := srcNode.(*fs.File)
+		srcFile, isSrcFile := srcNode.(fs.File)
 		srcPath := fs.RelPath(srcFsNode)
 
 		// Remove this srcPath from dst unmatched, if it was present
 		plan.dstFileUnmatch[srcPath] = nil, false
-
-		dstNode, hasDstNode := dstStore.Index().StrongFsNode(srcNode.Strong())
-
+		
+		var srcStrong string
+		if isSrcFile {
+			srcStrong = srcFile.Info().Strong
+		} else if srcDir, isSrcDir := srcNode.(fs.Dir); isSrcDir {
+			srcStrong = srcDir.Info().Strong
+		}
+		
+		var dstNode fs.FsNode
+		var hasDstNode bool
+		dstNode, hasDstNode = dstStore.Repo().File(srcStrong)
+		if !hasDstNode {
+			dstNode, hasDstNode = dstStore.Repo().Dir(srcStrong)
+		}
+		
 		isDstFile := false
 		if hasDstNode {
-			_, isDstFile = dstNode.(*fs.File)
+			_, isDstFile = dstNode.(fs.File)
 		}
 
 		dstFilePath := dstStore.Resolve(srcPath)
@@ -398,12 +410,12 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 	return plan
 }
 
-func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error {
-	match, err := MatchIndex(plan.srcStore.Index(), plan.dstStore.Resolve(dstPath))
+func (plan *PatchPlan) appendFilePlan(srcFile fs.File, dstPath string) os.Error {
+	match, err := MatchFile(srcFile, plan.dstStore.Resolve(dstPath))
 	if match == nil {
 		return err
 	}
-	match.SrcSize = srcFile.Size
+	match.SrcSize = srcFile.Info().Size
 
 	// Create a local temporary file in which to effect changes
 	localTemp := &LocalTemp{
@@ -415,14 +427,14 @@ func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error
 
 	for _, blockMatch := range match.BlockMatches {
 		// TODO: math/imath
-		length := srcFile.Size - blockMatch.SrcBlock.Offset()
+		length := srcFile.Info().Size - blockMatch.SrcBlock.Info().Offset()
 		if length > int64(fs.BLOCKSIZE) {
 			length = int64(fs.BLOCKSIZE)
 		}
 
 		plan.Cmds = append(plan.Cmds, &LocalTempCopy{
 			Temp:        localTemp,
-			LocalOffset: blockMatch.SrcBlock.Offset(),
+			LocalOffset: blockMatch.SrcBlock.Info().Offset(),
 			TempOffset:  blockMatch.DstOffset,
 			Length:      length})
 	}
@@ -430,7 +442,7 @@ func (plan *PatchPlan) appendFilePlan(srcFile *fs.File, dstPath string) os.Error
 	for _, srcRange := range match.NotMatched() {
 		plan.Cmds = append(plan.Cmds, &SrcTempCopy{
 			Temp:       localTemp,
-			SrcStrong:  srcFile.Strong(),
+			SrcStrong:  srcFile.Info().Strong,
 			SrcOffset:  srcRange.From,
 			TempOffset: srcRange.From,
 			Length:     srcRange.To - srcRange.From})
@@ -463,7 +475,7 @@ func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 }
 
 func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
-	fs.Walk(plan.srcStore.Root(), func(srcNode fs.Node) bool {
+	fs.Walk(plan.srcStore.Repo().Root(), func(srcNode fs.Node) bool {
 		var err os.Error
 		srcFsNode, is := srcNode.(fs.FsNode)
 		if !is {
@@ -481,7 +493,7 @@ func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
 			errors <- err
 		}
 
-		_, is = srcNode.(*fs.Dir)
+		_, is = srcNode.(fs.Dir)
 		return is
 	})
 }
@@ -505,12 +517,12 @@ func (plan *PatchPlan) String() string {
 }
 
 func Patch(src string, dst string) (*PatchPlan, os.Error) {
-	srcStore, err := fs.NewLocalStore(src)
+	srcStore, err := fs.NewLocalStore(src, fs.NewMemRepo())
 	if err != nil {
 		return nil, err
 	}
 
-	dstStore, err := fs.NewLocalStore(dst)
+	dstStore, err := fs.NewLocalStore(dst, fs.NewMemRepo())
 	if err != nil {
 		return nil, err
 	}

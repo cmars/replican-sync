@@ -67,6 +67,10 @@ func (file *memFile) Name() string {
 	return file.info.Name
 }
 
+func (file *memFile) Mode() uint32 {
+	return file.info.Mode
+}
+
 func (file *memFile) Repo() NodeRepo {
 	return file.repo
 }
@@ -90,6 +94,10 @@ func (dir *memDir) Info() *DirInfo {
 
 func (dir *memDir) Name() string {
 	return dir.info.Name
+}
+
+func (dir *memDir) Mode() uint32 {
+	return dir.info.Mode
 }
 
 func (dir *memDir) Repo() NodeRepo {
