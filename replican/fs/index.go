@@ -62,6 +62,7 @@ func newVisitor(path string, repo NodeRepo) *indexVisitor {
 	if rootInfo, err := os.Stat(path); err == nil {
 		visitor.VisitDir(path, rootInfo)
 		visitor.root = visitor.dirMap[path]
+		visitor.root.Info().Name = ""
 	}
 
 	return visitor

@@ -1,6 +1,7 @@
 package fs
 
 import (
+//	"fmt"
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/treegen"
@@ -37,8 +38,10 @@ func TestDirIndex(t *testing.T) {
 
 func DoTestDirIndex(t *testing.T, repo NodeRepo) {
 	dir := IndexDir("testroot/", repo, nil)
-
-	assert.Equal(t, "10dc111ed3edd17ac89e303e877874aa61b45434", dir.Info().Strong)
+	
+//	fmt.Printf("contents:\n%s\n", string(DirContents(dir)))
+	
+	assert.Equal(t, "feab33f9685531a1c1c9c22d5d8af98267ca9426", dir.Info().Strong)
 
 	var myMusic Dir = dir.SubDirs()[0]
 	assert.Equal(t, "My Music", myMusic.Name())
@@ -206,21 +209,16 @@ func DoTestDirResolve(t *testing.T, repo NodeRepo) {
 	var node FsNode
 	var found bool
 
-	bar, exists := DirItem(foo, "bar")
-	assert.T(t, exists)
-	barDir, isDir := bar.(Dir)
-	assert.T(t, isDir, "barDir = %v", barDir)
-
 	node, found = DirLookup(foo, "bar")
 	assert.T(t, found)
-	_, isDir = node.(Dir)
+	_, isDir := node.(Dir)
 	assert.T(t, isDir)
 
 	node, found = DirLookup(foo, filepath.Join("bar", "aleph"))
 	assert.T(t, found)
 	_, isDir = node.(Dir)
 	assert.T(t, isDir)
-
+	
 	node, found = DirLookup(foo, filepath.Join("bar", "aleph", "A"))
 	assert.T(t, found)
 	_, isFile := node.(File)
@@ -298,19 +296,19 @@ func DoTestParentRefs(t *testing.T, repo NodeRepo) {
 		switch node.(type) {
 		case Dir:
 			dir := node.(Dir)
-			if _, isRoot := dir.Parent(); isRoot {
+			if _, hasParent := dir.Parent(); !hasParent {
 				rootCount++
 			}
 			break
 		case File:
 			file := node.(File)
-			_, isRoot := file.Parent()
-			assert.T(t, !isRoot)
+			_, hasParent := file.Parent()
+			assert.Tf(t, hasParent, "%v is root?!", file.Info())
 			break
 		case Block:
 			block := node.(Block)
-			_, isRoot := block.Parent()
-			assert.T(t, !isRoot)
+			_, hasParent := block.Parent()
+			assert.Tf(t, hasParent, "%v is root?!", block.Info())
 			break
 		}
 		return true

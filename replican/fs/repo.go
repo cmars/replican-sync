@@ -2,6 +2,9 @@ package fs
 
 import (
 	"fmt"
+	"os"
+	"sort"
+	"strconv"
 )
 
 type NodeRepo interface {
@@ -102,98 +105,114 @@ func (dir *memDir) SubDirs() []Dir {
 }
 
 type MemRepo struct {
-	blocks     map[string]*memBlock
-	files      map[string]*memFile
-	dirs       map[string]*memDir
-	weakBlocks map[int]*memBlock
-	children   map[string][]string
+	blocks     map[string]*BlockInfo
+	files      map[string]*FileInfo
+	dirs       map[string]*DirInfo
+	weakBlocks map[int]*BlockInfo
+	children   map[string]map[string]string
 	root       FsNode
 }
 
 func NewMemRepo() *MemRepo {
 	return &MemRepo{
-		blocks: make(map[string]*memBlock),
-		files:  make(map[string]*memFile),
-		dirs:   make(map[string]*memDir),
-		weakBlocks: make(map[int]*memBlock),
-		children: make(map[string][]string) }
+		blocks: make(map[string]*BlockInfo),
+		files:  make(map[string]*FileInfo),
+		dirs:   make(map[string]*DirInfo),
+		weakBlocks: make(map[int]*BlockInfo),
+		children: make(map[string]map[string]string) }
 }
 
 func (repo *MemRepo) Root() FsNode { return repo.root }
 
 func (repo *MemRepo) WeakBlock(weak int) (block Block, has bool) {
-	block, has = repo.weakBlocks[weak]
-	return block, has
+	blockInfo, has := repo.weakBlocks[weak]
+	return &memBlock{ repo: repo, info: blockInfo }, has
 }
 
 func (repo *MemRepo) Block(strong string) (block Block, has bool) {
-	block, has = repo.blocks[strong]
-	return block, has
+	blockInfo, has := repo.blocks[strong]
+	return &memBlock{ repo: repo, info: blockInfo }, has
 }
 
 func (repo *MemRepo) File(strong string) (file File, has bool) {
-	file, has = repo.files[strong]
-	return file, has
+	fileInfo, has := repo.files[strong]
+	return &memFile{ repo: repo, info: fileInfo }, has
 }
 
 func (repo *MemRepo) Dir(strong string) (dir Dir, has bool) {
-	dir, has = repo.dirs[strong]
-	return dir, has
+	dirInfo, has := repo.dirs[strong]
+	return &memDir{ repo: repo, info: dirInfo }, has
 }
 
 func (repo *MemRepo) Blocks(parent string) []Block {
-	result := []Block{}
+	result := &Blocks{}
 	if children, hasChildren := repo.children[parent]; hasChildren {
-		for _, child := range children {
-			if block, has := repo.blocks[child]; has {
-				result = append(result, block)
+		for name, child := range children {
+			if blockInfo, has := repo.blocks[child]; has {
+				newInfo := *blockInfo
+				newInfo.Parent = parent
+				var err os.Error
+				if newInfo.Position, err = strconv.Atoi(name); err == nil {
+					result.Contents = append(result.Contents, 
+						&memBlock{ repo: repo, info: &newInfo })
+				}
 			}
 		}
 	}
-	return result
+	sort.Sort(result)
+	return result.Contents
 }
 
 func (repo *MemRepo) Files(parent string) []File {
-	result := []File{}
+	result := &Files{}
 	if children, hasChildren := repo.children[parent]; hasChildren {
-		for _, child := range children {
-			if file, has := repo.files[child]; has {
-				result = append(result, file)
+		for name, child := range children {
+			if fileInfo, has := repo.files[child]; has {
+				var newInfo FileInfo
+				newInfo = *fileInfo
+				newInfo.Parent = parent
+				newInfo.Name = name
+				result.Contents = append(result.Contents, &memFile{ repo: repo, info: &newInfo })
 			}
 		}
 	}
-	return result
+	sort.Sort(result)
+	return result.Contents
 }
 
 func (repo *MemRepo) SubDirs(parent string) []Dir {
-	result := []Dir{}
+	result := &Dirs{}
 	if children, hasChildren := repo.children[parent]; hasChildren {
-		for _, child := range children {
-			if dir, has := repo.dirs[child]; has {
-				result = append(result, dir)
+		for name, child := range children {
+			if dirInfo, has := repo.dirs[child]; has {
+				newInfo := *dirInfo
+				newInfo.Parent = parent
+				newInfo.Name = name
+				result.Contents = append(result.Contents, &memDir{ repo: repo, info: &newInfo })
 			}
 		}
 	}
-	return result
+	sort.Sort(result)
+	return result.Contents
 }
 
 func (repo *MemRepo) SetBlock(block *BlockInfo) Block {
 	mblock := &memBlock{ repo: repo, info: block }
-	repo.blocks[mblock.info.Strong] = mblock
-	repo.weakBlocks[mblock.info.Weak] = mblock
+	repo.blocks[block.Strong] = block
+	repo.weakBlocks[block.Weak] = block
 	
-	if mblock.info.Parent != "" {
-		repo.addChild(mblock.info.Parent, mblock.info.Strong)
+	if block.Parent != "" {
+		repo.addChild(block.Parent, block.Strong, fmt.Sprintf("%d", block.Position))
 	}
 	return mblock
 }
 
 func (repo *MemRepo) SetFile(file *FileInfo) File {
 	mfile := &memFile{ repo: repo, info: file }
-	repo.files[file.Strong] = mfile
+	repo.files[file.Strong] = file
 	
-	if mfile.info.Parent != "" {
-		repo.addChild(mfile.info.Parent, mfile.info.Strong)
+	if file.Parent != "" {
+		repo.addChild(file.Parent, file.Strong, file.Name)
 	}
 	return mfile
 }
@@ -204,21 +223,21 @@ func (repo *MemRepo) SetDir(dir *DirInfo) Dir {
 	}
 	
 	mdir := &memDir{ repo: repo, info: dir }
-	repo.dirs[dir.Strong] = mdir
+	repo.dirs[dir.Strong] = dir
 	
-	if mdir.info.Parent != "" {
-		repo.addChild(mdir.info.Parent, mdir.info.Strong)
+	if dir.Parent != "" {
+		repo.addChild(dir.Parent, dir.Strong, dir.Name)
 	}
 	return mdir
 }
 
-func (repo *MemRepo) addChild(parent string, child string) {
+func (repo *MemRepo) addChild(parent string, child string, name string) {
 	children, has := repo.children[parent]
 	if !has {
-		children = []string{}
+		children = make(map[string]string)
+		repo.children[parent] = children
 	}
-	
-	repo.children[parent] = append(children, child)
+	children[name] = child
 }
 
 func (repo *MemRepo) Remove(strong string) {

@@ -63,6 +63,22 @@ func (block *BlockInfo) Offset() int64 {
 	return int64(block.Position) * int64(BLOCKSIZE)
 }
 
+type Blocks struct {
+	Contents []Block
+}
+
+func (blocks *Blocks) Len() int {
+	return len(blocks.Contents)
+}
+
+func (blocks *Blocks) Less(i, j int) bool {
+	return blocks.Contents[i].Info().Position < blocks.Contents[j].Info().Position
+}
+
+func (blocks *Blocks) Swap(i, j int) {
+	blocks.Contents[i], blocks.Contents[j] = blocks.Contents[j], blocks.Contents[i] 
+}
+
 type File interface {
 	FsNode
 
@@ -74,10 +90,26 @@ type File interface {
 // Represent a file in a hierarchical tree model.
 type FileInfo struct {
 	Name   string
-	Mode   uint32
+	Mode   uint32 // TODO: move to repo wrapper?
 	Size   int64
 	Strong string
 	Parent string
+}
+
+type Files struct {
+	Contents []File
+}
+
+func (files *Files) Len() int {
+	return len(files.Contents)
+}
+
+func (files *Files) Less(i, j int) bool {
+	return files.Contents[i].Name() < files.Contents[j].Name()
+}
+
+func (files *Files) Swap(i, j int) {
+	files.Contents[i], files.Contents[j] = files.Contents[j], files.Contents[i] 
 }
 
 type Dir interface {
@@ -96,6 +128,22 @@ type DirInfo struct {
 	Mode   uint32
 	Strong string
 	Parent string
+}
+
+type Dirs struct {
+	Contents []Dir
+}
+
+func (dirs *Dirs) Len() int {
+	return len(dirs.Contents)
+}
+
+func (dirs *Dirs) Less(i, j int) bool {
+	return dirs.Contents[i].Name() < dirs.Contents[j].Name()
+}
+
+func (dirs *Dirs) Swap(i, j int) {
+	dirs.Contents[i], dirs.Contents[j] = dirs.Contents[j], dirs.Contents[i] 
 }
 
 // Calculate the strong checksum of a directory.
@@ -143,44 +191,30 @@ func DirContents(dir Dir) []byte {
 func DirLookup(dir Dir, relpath string) (fsNode FsNode, hasItem bool) {
 	parts := SplitNames(relpath)
 	cwd := dir
-	i := 0
-	l := len(parts)
 
-	for i = 0; i < l; i++ {
-		fsNode, hasItem = DirItem(cwd, parts[i])
-		if !hasItem {
-			return nil, false
-		}
-
+	for i, l := 0, len(parts) ; i < l; i++ {
 		if i == l-1 {
-			return fsNode, true
+			for _, file := range cwd.Files() {
+				if file.Name() == parts[i] {
+					return file, true
+				}
+			}
 		}
-
-		switch t := fsNode.(type) {
-		case Dir:
-			cwd = fsNode.(Dir)
-		default:
+		
+		hasSubdir := false
+		for _, subdir := range cwd.SubDirs() {
+			if subdir.Name() == parts[i] {
+				cwd = subdir
+				hasSubdir = true
+				break
+			}
+		}
+		if !hasSubdir {
 			return nil, false
 		}
 	}
 
-	return nil, false
-}
-
-func DirItem(dir Dir, name string) (FsNode, bool) {
-	for _, subdir := range dir.SubDirs() {
-		if subdir.Name() == name {
-			return subdir, true
-		}
-	}
-
-	for _, file := range dir.Files() {
-		if file.Name() == name {
-			return file, true
-		}
-	}
-
-	return nil, false
+	return cwd, true
 }
 
 // Visitor function to traverse a hierarchical tree model.
