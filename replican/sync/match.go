@@ -27,12 +27,13 @@ func (r *RangePair) Size() int64 {
 }
 
 func Match(src string, dst string) (match *FileMatch, err os.Error) {
-	repo := fs.NewMemRepo()
-	srcFile, err := fs.IndexFile(src, repo)
-	if srcFile == nil {
+	srcFileInfo, srcBlocksInfo, err := fs.IndexFile(src)
+	if err != nil {
 		return nil, err
 	}
 
+	repo := fs.NewMemRepo()
+	srcFile := repo.AddFile(nil, srcFileInfo, srcBlocksInfo)
 	match, err = MatchFile(srcFile, dst)
 	return match, err
 }

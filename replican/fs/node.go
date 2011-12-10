@@ -29,17 +29,15 @@ type FsNode interface {
 
 	// All FsNodes have names (file or directory name).
 	Name() string
-	
+
 	Mode() uint32
-	
 }
 
 // Given a filesystem node, calculate the relative path string to it from the root node.
 func RelPath(item FsNode) string {
 	parts := []string{}
 
-	for fsNode, hasParent := item, true; hasParent; 
-			fsNode, hasParent = fsNode.Parent() {
+	for fsNode, hasParent := item, true; hasParent; fsNode, hasParent = fsNode.Parent() {
 		parts = append([]string{fsNode.Name()}, parts...)
 	}
 
@@ -79,7 +77,7 @@ func (blocks *Blocks) Less(i, j int) bool {
 }
 
 func (blocks *Blocks) Swap(i, j int) {
-	blocks.Contents[i], blocks.Contents[j] = blocks.Contents[j], blocks.Contents[i] 
+	blocks.Contents[i], blocks.Contents[j] = blocks.Contents[j], blocks.Contents[i]
 }
 
 type File interface {
@@ -112,7 +110,7 @@ func (files *Files) Less(i, j int) bool {
 }
 
 func (files *Files) Swap(i, j int) {
-	files.Contents[i], files.Contents[j] = files.Contents[j], files.Contents[i] 
+	files.Contents[i], files.Contents[j] = files.Contents[j], files.Contents[i]
 }
 
 type Dir interface {
@@ -123,6 +121,8 @@ type Dir interface {
 	SubDirs() []Dir
 
 	Files() []File
+
+	UpdateStrong() string
 }
 
 // Represent a directory in a hierarchical tree model.
@@ -146,43 +146,23 @@ func (dirs *Dirs) Less(i, j int) bool {
 }
 
 func (dirs *Dirs) Swap(i, j int) {
-	dirs.Contents[i], dirs.Contents[j] = dirs.Contents[j], dirs.Contents[i] 
+	dirs.Contents[i], dirs.Contents[j] = dirs.Contents[j], dirs.Contents[i]
 }
 
 // Calculate the strong checksum of a directory.
-func DirStrong(dir Dir) string {
-	repo := dir.Repo()
-	oldStrong := dir.Info().Strong
+func CalcStrong(dir Dir) string {
 	var sha1 = sha1.New()
-	sha1.Write(DirContents(dir))
-	newStrong := toHexString(sha1)
-	
-	if oldStrong != newStrong {
-		for _, file := range repo.Files(oldStrong) {
-			fileInfo := file.Info()
-			fileInfo.Parent = newStrong
-			repo.SetFile(fileInfo)
-		}
-		for _, subdir := range repo.SubDirs(oldStrong) {
-			subdirInfo := subdir.Info()
-			subdirInfo.Parent = newStrong
-			repo.SetDir(subdirInfo)
-		}
-		dir.Info().Strong = newStrong
-		repo.SetDir(dir.Info())
-		repo.Remove(oldStrong)
-	}
-	
-	return newStrong
+	sha1.Write(reprDir(dir))
+	return toHexString(sha1)
 }
 
 // Represent the directory's distinct deep contents as a byte array.
-// Inspired by skimming over git internals.
-func DirContents(dir Dir) []byte {
+// Inspired by git.
+func reprDir(dir Dir) []byte {
 	buf := bytes.NewBufferString("")
 
 	for _, subdir := range dir.SubDirs() {
-		fmt.Fprintf(buf, "%s\td\t%s\n", DirStrong(subdir), subdir.Name())
+		fmt.Fprintf(buf, "%s\td\t%s\n", subdir.UpdateStrong(), subdir.Name())
 	}
 	for _, file := range dir.Files() {
 		fmt.Fprintf(buf, "%s\tf\t%s\n", file.Info().Strong, file.Name())
@@ -191,11 +171,11 @@ func DirContents(dir Dir) []byte {
 	return buf.Bytes()
 }
 
-func DirLookup(dir Dir, relpath string) (fsNode FsNode, hasItem bool) {
+func Lookup(dir Dir, relpath string) (fsNode FsNode, hasItem bool) {
 	parts := SplitNames(relpath)
 	cwd := dir
 
-	for i, l := 0, len(parts) ; i < l; i++ {
+	for i, l := 0, len(parts); i < l; i++ {
 		if i == l-1 {
 			for _, file := range cwd.Files() {
 				if file.Name() == parts[i] {
@@ -203,7 +183,7 @@ func DirLookup(dir Dir, relpath string) (fsNode FsNode, hasItem bool) {
 				}
 			}
 		}
-		
+
 		hasSubdir := false
 		for _, subdir := range cwd.SubDirs() {
 			if subdir.Name() == parts[i] {

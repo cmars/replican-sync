@@ -76,15 +76,14 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 		dirname, basename := filepath.Split(path)
 		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
 
-		var parentStrong string
-		if parentDir, hasParent := visitor.dirMap[dirname]; hasParent {
-			parentStrong = parentDir.Info().Strong
+		parentDir, hasParent := visitor.dirMap[dirname]
+		info := &DirInfo{
+			Name: basename,
+			Mode: f.Mode}
+		if hasParent {
+			info.Parent = parentDir.Info().Strong
 		}
-		
-		dir = visitor.repo.SetDir(&DirInfo{
-			Name:   basename,
-			Mode:   f.Mode,
-			Parent: parentStrong })
+		dir = visitor.repo.AddDir(parentDir, info)
 		visitor.dirMap[path] = dir
 	}
 
@@ -93,24 +92,21 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 
 // IndexDir visitor callback for files
 func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
-	file, err := IndexFile(path, visitor.repo)
-	if file != nil {
+	fileInfo, blocksInfo, err := IndexFile(path)
+	if err == nil {
 		dirpath, _ := filepath.Split(path)
 		dirpath = filepath.Clean(dirpath)
 		if dirinfo, err := os.Stat(dirpath); err == nil {
 			visitor.VisitDir(dirpath, dirinfo)
 
 			if fileParent, hasParent := visitor.dirMap[dirpath]; hasParent {
-				file.Info().Parent = fileParent.Info().Strong
-				visitor.repo.SetFile(file.Info())
+				visitor.repo.AddFile(fileParent, fileInfo, blocksInfo)
 				return
 			} else if visitor.errors != nil {
 				visitor.errors <- os.NewError("cannot locate parent directory")
 			}
 		}
-	}
-
-	if err != nil && visitor.errors != nil {
+	} else if visitor.errors != nil {
 		visitor.errors <- err
 	}
 }
@@ -127,57 +123,52 @@ func IndexDir(path string, repo NodeRepo, errors chan<- os.Error) Dir {
 	}()
 	<-control
 
-	DirStrong(visitor.root)
+	visitor.root.UpdateStrong()
 
 	return visitor.root
 }
 
 // Build a hierarchical tree model representing a file's contents
-func IndexFile(path string, repo NodeRepo) (file File, err os.Error) {
+func IndexFile(path string) (fileInfo *FileInfo, blocksInfo []*BlockInfo, err os.Error) {
 	var f *os.File
 	var buf [BLOCKSIZE]byte
 
 	stat, err := os.Stat(path)
 	if stat == nil {
-		return nil, err
+		return nil, nil, err
 	} else if !stat.IsRegular() {
-		return nil, os.NewError(fmt.Sprintf("%s: not a regular file", path))
+		return nil, nil, os.NewError(fmt.Sprintf("%s: not a regular file", path))
 	}
 
 	f, err = os.Open(path)
 	if f == nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
 
 	_, basename := filepath.Split(path)
-	fileInfo := &FileInfo{
+	fileInfo = &FileInfo{
 		Name: basename,
 		Mode: stat.Mode,
-		Size: stat.Size }
+		Size: stat.Size}
 
 	var block *BlockInfo
 	sha1 := sha1.New()
 	blockNum := 0
-	blocks := []*BlockInfo{}
+	blocksInfo = []*BlockInfo{}
 
 	for {
 		switch rd, err := f.Read(buf[:]); true {
 		case rd < 0:
-			return nil, err
+			return nil, nil, err
 		case rd == 0:
 			fileInfo.Strong = toHexString(sha1)
-			file = repo.SetFile(fileInfo)
-			for _, block := range blocks {
-				block.Parent = fileInfo.Strong
-				repo.SetBlock(block)
-			}
-			return file, nil
+			return fileInfo, blocksInfo, nil
 		case rd > 0:
 			// Update block hashes
 			block = IndexBlock(buf[0:rd])
 			block.Position = blockNum
-			blocks = append(blocks, block)
+			blocksInfo = append(blocksInfo, block)
 
 			// update file hash
 			sha1.Write(buf[0:rd])
@@ -186,8 +177,7 @@ func IndexFile(path string, repo NodeRepo) (file File, err os.Error) {
 			blockNum++
 		}
 	}
-
-	return nil, nil
+	panic("Impossible")
 }
 
 // Render a Hash as a hexadecimal string.
@@ -210,5 +200,5 @@ func IndexBlock(buf []byte) *BlockInfo {
 
 	return &BlockInfo{
 		Weak:   weak.Get(),
-		Strong: StrongChecksum(buf) }
+		Strong: StrongChecksum(buf)}
 }

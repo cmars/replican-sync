@@ -84,12 +84,11 @@ func (store *LocalDirStore) reindex() (err os.Error) {
 }
 
 func (store *LocalFileStore) reindex() (err os.Error) {
-	store.file, err = IndexFile(store.RootPath(), store.repo)
-	if err != nil {
-		return err
+	if fileInfo, blocksInfo, err := IndexFile(store.RootPath()); err == nil {
+		store.file = store.repo.AddFile(nil, fileInfo, blocksInfo)
+		return nil
 	}
-
-	return nil
+	return err
 }
 
 func (store *localBase) RelPath(fullpath string) (relpath string) {

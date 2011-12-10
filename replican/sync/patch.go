@@ -326,21 +326,21 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 
 		// Remove this srcPath from dst unmatched, if it was present
 		plan.dstFileUnmatch[srcPath] = nil, false
-		
+
 		var srcStrong string
 		if isSrcFile {
 			srcStrong = srcFile.Info().Strong
 		} else if srcDir, isSrcDir := srcNode.(fs.Dir); isSrcDir {
 			srcStrong = srcDir.Info().Strong
 		}
-		
+
 		var dstNode fs.FsNode
 		var hasDstNode bool
 		dstNode, hasDstNode = dstStore.Repo().File(srcStrong)
 		if !hasDstNode {
 			dstNode, hasDstNode = dstStore.Repo().Dir(srcStrong)
 		}
-		
+
 		isDstFile := false
 		if hasDstNode {
 			_, isDstFile = dstNode.(fs.File)

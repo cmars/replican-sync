@@ -1,7 +1,6 @@
 package fs
 
 import (
-//	"fmt"
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/treegen"
@@ -12,24 +11,17 @@ import (
 )
 
 func TestIndexSomeMp3(t *testing.T) {
-	DoTestIndexSomeMp3(t, NewMemRepo())
-}
-
-func DoTestIndexSomeMp3(t *testing.T, repo NodeRepo) {
-	var f File
-	var err os.Error
-
 	cwd, _ := os.Getwd()
 	t.Logf("CWD=%s", cwd)
 
-	f, err = IndexFile("../../testroot/My Music/0 10k 30.mp4", repo)
+	f, blks, err := IndexFile("../../testroot/My Music/0 10k 30.mp4")
 	if f == nil {
 		t.Fatalf("Failed to index file: %s", err.String())
 	}
 
-	assert.Equal(t, "5ab3e5d621402e5894429b5f595a1e2d7e1b3078", f.Info().Strong)
-	assert.Equal(t, "d1f11a93449fa4d3f320234743204ce157bbf1f3", f.Blocks()[0].Info().Strong)
-	assert.Equal(t, "eabbe570b21cd2c5101a18b51a3174807fa5c0da", f.Blocks()[1].Info().Strong)
+	assert.Equal(t, "5ab3e5d621402e5894429b5f595a1e2d7e1b3078", f.Strong)
+	assert.Equal(t, "d1f11a93449fa4d3f320234743204ce157bbf1f3", blks[0].Strong)
+	assert.Equal(t, "eabbe570b21cd2c5101a18b51a3174807fa5c0da", blks[1].Strong)
 }
 
 func TestDirIndex(t *testing.T) {
@@ -38,9 +30,7 @@ func TestDirIndex(t *testing.T) {
 
 func DoTestDirIndex(t *testing.T, repo NodeRepo) {
 	dir := IndexDir("testroot/", repo, nil)
-	
-//	fmt.Printf("contents:\n%s\n", string(DirContents(dir)))
-	
+
 	assert.Equal(t, "feab33f9685531a1c1c9c22d5d8af98267ca9426", dir.Info().Strong)
 
 	var myMusic Dir = dir.SubDirs()[0]
@@ -209,17 +199,17 @@ func DoTestDirResolve(t *testing.T, repo NodeRepo) {
 	var node FsNode
 	var found bool
 
-	node, found = DirLookup(foo, "bar")
+	node, found = Lookup(foo, "bar")
 	assert.T(t, found)
 	_, isDir := node.(Dir)
 	assert.T(t, isDir)
 
-	node, found = DirLookup(foo, filepath.Join("bar", "aleph"))
+	node, found = Lookup(foo, filepath.Join("bar", "aleph"))
 	assert.T(t, found)
 	_, isDir = node.(Dir)
 	assert.T(t, isDir)
-	
-	node, found = DirLookup(foo, filepath.Join("bar", "aleph", "A"))
+
+	node, found = Lookup(foo, filepath.Join("bar", "aleph", "A"))
 	assert.T(t, found)
 	_, isFile := node.(File)
 	assert.T(t, isFile)
@@ -247,13 +237,13 @@ func DoTestDirDescent(t *testing.T, repo NodeRepo) {
 		filepath.Join("foo", "baobab"),
 		filepath.Join("foo", "bar", "aleph", "a"),
 		filepath.Join("foo", "bar3003")} {
-		node, found := DirLookup(dir, fpath)
+		node, found := Lookup(dir, fpath)
 		assert.Tf(t, found, "not found: %s", fpath)
 		_, isFile := node.(File)
 		assert.T(t, isFile)
 	}
 
-	node, found := DirLookup(dir, filepath.Join("foo", "bar"))
+	node, found := Lookup(dir, filepath.Join("foo", "bar"))
 	assert.T(t, found)
 	_, isDir := node.(Dir)
 	assert.T(t, isDir)

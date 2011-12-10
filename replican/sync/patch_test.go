@@ -47,13 +47,13 @@ func TestPatch(t *testing.T) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 
-	srcFile, err := fs.IndexFile(srcPath, fs.NewMemRepo())
+	srcFileInfo, _, err := fs.IndexFile(srcPath)
 	assert.T(t, err == nil)
 
-	dstFile, err := fs.IndexFile(dstPath, fs.NewMemRepo())
+	dstFileInfo, _, err := fs.IndexFile(dstPath)
 	assert.Tf(t, err == nil, "%v", err)
 
-	assert.Equal(t, srcFile.Info().Strong, dstFile.Info().Strong)
+	assert.Equal(t, srcFileInfo.Strong, dstFileInfo.Strong)
 }
 
 // Test the patch planner on two identical directory structures.
@@ -91,21 +91,24 @@ func TestMatchAppend(t *testing.T) {
 	defer os.RemoveAll(srcpath)
 
 	// Try indexing root dir as a file
-	srcFile, err := fs.IndexFile(srcpath, fs.NewMemRepo())
+	srcFileInfo, srcBlocksInfo, err := fs.IndexFile(srcpath)
 	assert.Tf(t, err != nil, "%v", err)
 
 	// Ok, for real this time
-	srcFile, err = fs.IndexFile(filepath.Join(srcpath, "bar"), fs.NewMemRepo())
+	srcFileInfo, srcBlocksInfo, err = fs.IndexFile(filepath.Join(srcpath, "bar"))
 	assert.Tf(t, err == nil, "%v", err)
-	assert.Equal(t, 17, len(srcFile.Blocks()))
+	assert.Equal(t, 17, len(srcBlocksInfo))
 
 	tg = treegen.New()
 	treeSpec = tg.F("bar", tg.B(42, 65537))
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstFile, err := fs.IndexFile(filepath.Join(dstpath, "bar"), fs.NewMemRepo())
-	assert.Equal(t, 9, len(dstFile.Blocks()))
+	_, dstBlocksInfo, err := fs.IndexFile(filepath.Join(dstpath, "bar"))
+	assert.Equal(t, 9, len(dstBlocksInfo))
+
+	srcRepo := fs.NewMemRepo()
+	srcFile := srcRepo.AddFile(nil, srcFileInfo, srcBlocksInfo)
 
 	match, err := MatchFile(srcFile, filepath.Join(dstpath, "bar"))
 	assert.T(t, err == nil, "%v", err)
