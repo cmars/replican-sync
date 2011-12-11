@@ -14,7 +14,7 @@ var tbl_DIRS *sqlite3.Table
 
 func init() {
 	tbl_BLOCKS = &sqlite3.Table{ "blocks", "parent INTEGER, strong TEXT, weak INTEGER, pos INTEGER" }
-	tbl_FILES = &sqlite3.Table{ "files", "parent INTEGER, strong TEXT, name TEXT, mode INTEGER" }
+	tbl_FILES = &sqlite3.Table{ "files", "parent INTEGER, strong TEXT, name TEXT, mode INTEGER, size INTEGER" }
 	tbl_DIRS = &sqlite3.Table{ "dirs", "parent INTEGER, strong TEXT, name TEXT, mode INTEGER" }
 }
 
@@ -41,6 +41,7 @@ type DbRepo struct {
 
 type dbBlock struct {
 	id int
+	parent int
 	repo *DbRepo
 	info *fs.BlockInfo
 }
@@ -57,6 +58,7 @@ func (dbb *dbBlock) Info() *fs.BlockInfo {
 	
 type dbFile struct {
 	id int
+	parent int
 	repo *DbRepo
 	info *fs.FileInfo
 }
@@ -85,6 +87,7 @@ func (dbf *dbFile) Blocks() []fs.Block {
 
 type dbDir struct {
 	id int
+	parent int
 	repo *DbRepo
 	info *fs.DirInfo
 }
@@ -135,7 +138,7 @@ func (dbRepo *DbRepo) doRoot(db *sqlite3.Database) fs.FsNode {
 
 func (dbRepo *DbRepo) doWeakBlock(db *sqlite3.Database, weak int) (fs.Block, bool) {
 	stmt, _ := db.Prepare(
-		`SELECT b.rowid, p.strong, b.strong, b.pos 
+		`SELECT b.rowid, p.rowid, b.pos, b.strong, p.strong 
 			FROM blocks AS b LEFT OUTER JOIN files AS p ON b.parent = p.rowid
 			WHERE b.weak = ?`, weak)
 	defer stmt.Finalize()
@@ -143,17 +146,18 @@ func (dbRepo *DbRepo) doWeakBlock(db *sqlite3.Database, weak int) (fs.Block, boo
 	values := stmt.Row()
 	block := &dbBlock{
 		id: values[0].(int),
+		parent: values[1].(int),
 		info: &fs.BlockInfo {
-			Parent: values[1].(string),
-			Strong: values[2].(string),
 			Weak: weak,
-			Position: values[3].(int) } }
+			Position: values[2].(int),
+			Strong: values[3].(string),
+			Parent: values[4].(string) } }
 	return block, true
 }
 
 func (dbRepo *DbRepo) doBlock(db *sqlite3.Database, strong string) (fs.Block, bool) {
 	stmt, _ := db.Prepare(
-		`SELECT b.rowid, p.strong, b.weak, b.pos 
+		`SELECT b.rowid, p.rowid, b.weak, b.pos, p.strong 
 			FROM blocks AS b LEFT OUTER JOIN files AS p ON b.parent = p.rowid
 			WHERE b.strong = ?`, strong)
 	defer stmt.Finalize()
@@ -161,17 +165,18 @@ func (dbRepo *DbRepo) doBlock(db *sqlite3.Database, strong string) (fs.Block, bo
 	values := stmt.Row()
 	block := &dbBlock{
 		id: values[0].(int),
+		parent: values[1].(int),
 		info: &fs.BlockInfo {
-			Parent: values[1].(string),
-			Strong: strong,
 			Weak: values[2].(int),
-			Position: values[3].(int) } }
+			Position: values[3].(int),
+			Strong: strong,
+			Parent: values[4].(string) } }
 	return block, true
 }
 
 func (dbRepo *DbRepo) doFile(db *sqlite3.Database, strong string) (fs.File, bool) {
 	stmt, _ := db.Prepare(
-		`SELECT f.rowid, p.strong, f.name, f.mode 
+		`SELECT f.rowid, p.rowid, f.name, f.mode, f.size, p.strong
 			FROM files AS f LEFT OUTER JOIN dirs AS p ON f.parent = p.rowid
 			WHERE f.strong = ?`, strong)
 	defer stmt.Finalize()
@@ -179,17 +184,19 @@ func (dbRepo *DbRepo) doFile(db *sqlite3.Database, strong string) (fs.File, bool
 	values := stmt.Row()
 	file := &dbFile{
 		id: values[0].(int),
+		parent: values[1].(int),
 		info: &fs.FileInfo {
-			Parent: values[1].(string),
 			Strong: strong,
 			Name: values[2].(string),
-			Mode: values[3].(uint32) } }
+			Mode: values[3].(uint32),
+			Size: values[4].(int64),
+			Parent: values[5].(string) } }
 	return file, true
 }
 
 func (dbRepo *DbRepo) doDir(db *sqlite3.Database, strong string) (fs.Dir, bool) {
 	stmt, _ := db.Prepare(
-		`SELECT d.rowid, p.strong, d.name, d.mode 
+		`SELECT d.rowid, p.rowid, d.name, d.mode, p.strong 
 			FROM dirs AS d LEFT OUTER JOIN dirs AS p ON d.parent = p.rowid
 			WHERE d.strong = ?`, strong)
 	defer stmt.Finalize()
@@ -197,11 +204,12 @@ func (dbRepo *DbRepo) doDir(db *sqlite3.Database, strong string) (fs.Dir, bool) 
 	values := stmt.Row()
 	dir := &dbDir{ 
 		id: values[0].(int),
+		parent: values[1].(int),
 		info: &fs.DirInfo {
-			Parent: values[1].(string),
-			Strong: strong,
 			Name: values[2].(string),
-			Mode: values[3].(uint32) } }
+			Mode: values[3].(uint32),
+			Strong: strong,
+			Parent: values[4].(string) } }
 	return dir, true
 }
 
@@ -218,6 +226,7 @@ func (dbRepo *DbRepo) doAddBlock(db *sqlite3.Database, file fs.File, blockInfo *
 	values := stmt.Row()
 	block := &dbBlock{
 		id: values[0].(int),
+		parent: dbfile.id,
 		info: blockInfo }
 	return block
 }
@@ -225,8 +234,8 @@ func (dbRepo *DbRepo) doAddBlock(db *sqlite3.Database, file fs.File, blockInfo *
 func (dbRepo *DbRepo) doAddFile(db *sqlite3.Database, dir fs.Dir, fileInfo *fs.FileInfo, blocksInfo []*fs.BlockInfo) fs.File {
 	dbdir := dir.(*dbDir)
 	stmt, _ := db.Prepare(
-		`INSERT INTO files (parent, strong, name, mode) VALUES (?,?,?,?)`, 
-		dbdir.id, fileInfo.Strong, fileInfo.Name, fileInfo.Mode)
+		`INSERT INTO files (parent, strong, name, mode, size) VALUES (?,?,?,?,?)`, 
+		dbdir.id, fileInfo.Strong, fileInfo.Name, fileInfo.Mode, fileInfo.Size)
 	defer stmt.Finalize()
 	stmt.Step()
 	
@@ -235,6 +244,7 @@ func (dbRepo *DbRepo) doAddFile(db *sqlite3.Database, dir fs.Dir, fileInfo *fs.F
 	values := stmt.Row()
 	file := &dbFile{
 		id: values[0].(int),
+		parent: dbdir.id,
 		info: fileInfo }
 	
 	for _, blockInfo := range blocksInfo {
@@ -257,28 +267,142 @@ func (dbRepo *DbRepo) doAddDir(db *sqlite3.Database, dir fs.Dir, subdirInfo *fs.
 	values := stmt.Row()
 	subdir := &dbDir{
 		id: values[0].(int),
+		parent: dbdir.id,
 		info: subdirInfo }
 	return subdir
 }
 
 func (dbRepo *DbRepo) doParentOf(db *sqlite3.Database, node fs.Node) (fs.FsNode, bool) {
-	panic("todo")
+	var sql string
+	var id int
+	switch node.(type) {
+	case *dbBlock:
+		id = node.(*dbBlock).parent
+		if id == 0 {
+			return nil, false
+		}
+		
+		sql = `SELECT f.rowid, p.rowid, f.name, f.mode, f.size, f.strong, p.strong
+			FROM files AS f LEFT OUTER JOIN dirs AS p ON f.parent = p.rowid
+			WHERE f.rowid = ?`
+		
+		stmt, _ := db.Prepare(sql, id)
+		defer stmt.Finalize()
+		stmt.Step()
+		values := stmt.Row()
+		return &dbFile{
+			id: values[0].(int),
+			parent: values[1].(int),
+			info: &fs.FileInfo {
+				Name: values[2].(string),
+				Mode: values[3].(uint32),
+				Size: values[4].(int64),
+				Strong: values[5].(string),
+				Parent: values[6].(string) } }, true
+		
+	case *dbFile:
+		id = node.(*dbFile).parent
+		sql = `SELECT d.rowid, p.rowid, d.name, d.mode, d.strong, p.strong 
+			FROM dirs AS d LEFT OUTER JOIN dirs AS p ON d.parent = p.rowid 
+			WHERE d.rowid = ?`
+	case *dbDir:
+		id = node.(*dbDir).parent
+		sql = `SELECT d.rowid, p.rowid, d.name, d.mode, d.strong, p.strong 
+			FROM dirs AS d LEFT OUTER JOIN dirs AS p ON d.parent = p.rowid 
+			WHERE d.rowid = ?`
+	}
+	
+	if id == 0 {
+		return nil, false
+	}
+	
+	stmt, _ := db.Prepare(sql, id)
+	defer stmt.Finalize()
+	stmt.Step()
+	values := stmt.Row()
+	return &dbDir{
+		id: values[0].(int),
+		parent: values[1].(int),
+		info: &fs.DirInfo {
+			Name: values[2].(string),
+			Mode: values[3].(uint32),
+			Strong: values[4].(string),
+			Parent: values[5].(string) } }, true
 }
 
 func (dbRepo *DbRepo) doSubdirsOf(db *sqlite3.Database, dir *dbDir) []fs.Dir {
-	panic("todo")
+	result := []fs.Dir{}
+	stmt, _ := db.Prepare(
+		`SELECT d.rowid, p.rowid, d.name, d.mode, d.strong, p.strong 
+			FROM dirs AS d LEFT OUTER JOIN dirs AS p ON d.parent = p.rowid
+			WHERE p.rowid = ?`, dir.id)
+	defer stmt.Finalize()
+	
+	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
+		result = append(result, &dbDir{
+			id: values[0].(int),
+			parent: values[1].(int),
+			info: &fs.DirInfo {
+				Name: values[2].(string),
+				Mode: values[3].(uint32),
+				Strong: values[4].(string),
+				Parent: values[5].(string) } })
+	})
+	return result
 }
 
 func (dbRepo *DbRepo) doFilesOf(db *sqlite3.Database, dir *dbDir) []fs.File {
-	panic("todo")
+	result := []fs.File{}
+	stmt, _ := db.Prepare(
+		`SELECT f.rowid, p.rowid, f.name, f.mode, f.size, f.strong, p.strong 
+			FROM files AS f LEFT OUTER JOIN dirs AS p ON f.parent = p.rowid
+			WHERE p.rowid = ?`, dir.id)
+	defer stmt.Finalize()
+	
+	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
+		result = append(result, &dbFile{
+			id: values[0].(int),
+			parent: values[1].(int),
+			info: &fs.FileInfo {
+				Name: values[2].(string),
+				Mode: values[3].(uint32),
+				Size: values[4].(int64),
+				Strong: values[5].(string),
+				Parent: values[6].(string) } })
+	})
+	return result
 }
 
 func (dbRepo *DbRepo) doBlocksOf(db *sqlite3.Database, file *dbFile) []fs.Block {
-	panic("todo")
+	result := []fs.Block{}
+	stmt, _ := db.Prepare(
+		`SELECT b.rowid, p.rowid, b.weak, b.pos, b.strong, p.strong 
+			FROM blocks AS b LEFT OUTER JOIN files AS p ON b.parent = p.rowid
+			WHERE p.rowid = ?`, file.id)
+	defer stmt.Finalize()
+	
+	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
+		result = append(result, &dbBlock{
+			id: values[0].(int),
+			parent: values[1].(int),
+			info: &fs.BlockInfo {
+				Weak: values[2].(int),
+				Position: values[3].(int),
+				Strong: values[4].(string),
+				Parent: values[5].(string) } })
+	})
+	return result
 }
 
 func (dbRepo *DbRepo) doUpdateStrong(db *sqlite3.Database, dir *dbDir) string {
-	panic("todo")
+	newStrong := fs.CalcStrong(dir)
+	if newStrong != dir.info.Strong {
+		stmt, _ := db.Prepare(
+			`UPDATE dirs SET strong = ? WHERE id = ?`, newStrong, dir.id)
+		defer stmt.Finalize()
+		stmt.Step()
+	}
+	return newStrong
 }
 
 func NewDbRepo(rootPath string) *DbRepo {
