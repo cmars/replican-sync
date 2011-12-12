@@ -1,68 +1,47 @@
-package fs
+package fstest
 
 import (
 	"os"
 	"path/filepath"
-	"github.com/cmars/replican-sync/replican/treegen"
 	"strings"
 	"testing"
 
 	"github.com/bmizerany/assert"
+	"github.com/cmars/replican-sync/replican/treegen"
+	"github.com/cmars/replican-sync/replican/fs"
 )
 
-func TestIndexSomeMp3(t *testing.T) {
-	cwd, _ := os.Getwd()
-	t.Logf("CWD=%s", cwd)
-
-	f, blks, err := IndexFile("../../testroot/My Music/0 10k 30.mp4")
-	if f == nil {
-		t.Fatalf("Failed to index file: %s", err.String())
-	}
-
-	assert.Equal(t, "5ab3e5d621402e5894429b5f595a1e2d7e1b3078", f.Strong)
-	assert.Equal(t, "d1f11a93449fa4d3f320234743204ce157bbf1f3", blks[0].Strong)
-	assert.Equal(t, "eabbe570b21cd2c5101a18b51a3174807fa5c0da", blks[1].Strong)
-}
-
-func TestDirIndex(t *testing.T) {
-	DoTestDirIndex(t, NewMemRepo())
-}
-
-func DoTestDirIndex(t *testing.T, repo NodeRepo) {
-	dir := IndexDir("testroot/", repo, nil)
+func DoTestDirIndex(t *testing.T, repo fs.NodeRepo) {
+	dir := fs.IndexDir("testroot/", repo, nil)
 
 	assert.Equal(t, "feab33f9685531a1c1c9c22d5d8af98267ca9426", dir.Info().Strong)
 
-	var myMusic Dir = dir.SubDirs()[0]
+	var myMusic fs.Dir = dir.SubDirs()[0]
 	assert.Equal(t, "My Music", myMusic.Name())
 
 	for i := 0; i < 2; i++ {
-		var mp4file FsNode = myMusic.Files()[i]
+		var mp4file fs.FsNode = myMusic.Files()[i]
 		assert.Tf(t, strings.HasPrefix(mp4file.Name(), "0 10k 30"),
 			"Unexpected d -> d -> f name: %s", mp4file.Name())
 	}
 }
 
-func TestVisitDirsOnly(t *testing.T) {
-	DoTestVisitDirsOnly(t, NewMemRepo())
-}
+func DoTestVisitDirsOnly(t *testing.T, repo fs.NodeRepo) {
+	dir := fs.IndexDir("../../testroot/", repo, nil)
 
-func DoTestVisitDirsOnly(t *testing.T, repo NodeRepo) {
-	dir := IndexDir("../../testroot/", repo, nil)
+	collect := []fs.Dir{}
+	visited := []fs.Node{}
 
-	collect := []Dir{}
-	visited := []Node{}
-
-	Walk(dir, func(node Node) bool {
+	fs.Walk(dir, func(node fs.Node) bool {
 		visited = append(visited, node)
 
-		d, ok := node.(Dir)
+		d, ok := node.(fs.Dir)
 		if ok {
 			collect = append(collect, d)
 			return true
 		}
 
-		_, ok = node.(File)
+		_, ok = node.(fs.File)
 		if ok {
 			return false
 		}
@@ -74,24 +53,20 @@ func DoTestVisitDirsOnly(t *testing.T, repo NodeRepo) {
 	assert.Equalf(t, 3, len(collect), "Unexpected dirs in testroot/: %v", collect)
 
 	for _, node := range visited {
-		_, ok := node.(Block)
+		_, ok := node.(fs.Block)
 		if ok {
 			t.Fatalf("Should not have gotten a block, we told visitor to stop at file level.")
 		}
 	}
 }
 
-func TestVisitBlocks(t *testing.T) {
-	DoTestVisitBlocks(t, NewMemRepo())
-}
+func DoTestVisitBlocks(t *testing.T, repo fs.NodeRepo) {
+	dir := fs.IndexDir("../../testroot/", repo, nil)
 
-func DoTestVisitBlocks(t *testing.T, repo NodeRepo) {
-	dir := IndexDir("../../testroot/", repo, nil)
+	collect := []fs.Block{}
 
-	collect := []Block{}
-
-	Walk(dir, func(node Node) bool {
-		b, ok := node.(Block)
+	fs.Walk(dir, func(node fs.Node) bool {
+		b, ok := node.(fs.Block)
 		if ok {
 			collect = append(collect, b)
 		}
@@ -109,38 +84,30 @@ func DoTestVisitBlocks(t *testing.T, repo NodeRepo) {
 	assert.Tf(t, matched, "Failed to find expected block")
 }
 
-func TestNodeRelPath(t *testing.T) {
-	DoTestNodeRelPath(t, NewMemRepo())
-}
-
-func DoTestNodeRelPath(t *testing.T, repo NodeRepo) {
+func DoTestNodeRelPath(t *testing.T, repo fs.NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := IndexDir(path, repo, nil)
+	dir := fs.IndexDir(path, repo, nil)
 
-	assert.Equal(t, "", RelPath(dir))
-	assert.Equal(t, "foo", RelPath(dir.SubDirs()[0]))
-	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs()[0].Files()[0]))
+	assert.Equal(t, "", fs.RelPath(dir))
+	assert.Equal(t, "foo", fs.RelPath(dir.SubDirs()[0]))
+	assert.Equal(t, filepath.Join("foo", "bar"), fs.RelPath(dir.SubDirs()[0].Files()[0]))
 
-	assert.Equal(t, filepath.Join("foo", "bar"), RelPath(dir.SubDirs()[0].Files()[0]))
+	assert.Equal(t, filepath.Join("foo", "bar"), fs.RelPath(dir.SubDirs()[0].Files()[0]))
 }
 
-func TestStoreRelPath(t *testing.T) {
-	DoTestStoreRelPath(t, NewMemRepo())
-}
-
-func DoTestStoreRelPath(t *testing.T, repo NodeRepo) {
+func DoTestStoreRelPath(t *testing.T, repo fs.NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	store, err := NewLocalStore(path, repo)
+	store, err := fs.NewLocalStore(path, repo)
 	assert.T(t, err == nil)
 
 	relFoo := store.RelPath(filepath.Join(path, "foo"))
@@ -163,11 +130,7 @@ func DoTestStoreRelPath(t *testing.T, repo NodeRepo) {
 		newBar, store.Resolve(foobar))
 }
 
-func TestDirResolve(t *testing.T) {
-	DoTestDirResolve(t, NewMemRepo())
-}
-
-func DoTestDirResolve(t *testing.T, repo NodeRepo) {
+func DoTestDirResolve(t *testing.T, repo fs.NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -194,32 +157,28 @@ func DoTestDirResolve(t *testing.T, repo NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), repo, nil)
+	foo := fs.IndexDir(filepath.Join(path, "foo"), repo, nil)
 
-	var node FsNode
+	var node fs.FsNode
 	var found bool
 
-	node, found = Lookup(foo, "bar")
+	node, found = fs.Lookup(foo, "bar")
 	assert.T(t, found)
-	_, isDir := node.(Dir)
+	_, isDir := node.(fs.Dir)
 	assert.T(t, isDir)
 
-	node, found = Lookup(foo, filepath.Join("bar", "aleph"))
+	node, found = fs.Lookup(foo, filepath.Join("bar", "aleph"))
 	assert.T(t, found)
-	_, isDir = node.(Dir)
+	_, isDir = node.(fs.Dir)
 	assert.T(t, isDir)
 
-	node, found = Lookup(foo, filepath.Join("bar", "aleph", "A"))
+	node, found = fs.Lookup(foo, filepath.Join("bar", "aleph", "A"))
 	assert.T(t, found)
-	_, isFile := node.(File)
+	_, isFile := node.(fs.File)
 	assert.T(t, isFile)
 }
 
-func TestDirDescent(t *testing.T) {
-	DoTestDirDescent(t, NewMemRepo())
-}
-
-func DoTestDirDescent(t *testing.T, repo NodeRepo) {
+func DoTestDirDescent(t *testing.T, repo fs.NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.F("baobab", tg.B(91, 65537)),
@@ -231,29 +190,25 @@ func DoTestDirDescent(t *testing.T, repo NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := IndexDir(path, repo, nil)
+	dir := fs.IndexDir(path, repo, nil)
 
 	for _, fpath := range []string{
 		filepath.Join("foo", "baobab"),
 		filepath.Join("foo", "bar", "aleph", "a"),
 		filepath.Join("foo", "bar3003")} {
-		node, found := Lookup(dir, fpath)
+		node, found := fs.Lookup(dir, fpath)
 		assert.Tf(t, found, "not found: %s", fpath)
-		_, isFile := node.(File)
+		_, isFile := node.(fs.File)
 		assert.T(t, isFile)
 	}
 
-	node, found := Lookup(dir, filepath.Join("foo", "bar"))
+	node, found := fs.Lookup(dir, filepath.Join("foo", "bar"))
 	assert.T(t, found)
-	_, isDir := node.(Dir)
+	_, isDir := node.(fs.Dir)
 	assert.T(t, isDir)
 }
 
-func TestParentRefs(t *testing.T) {
-	DoTestParentRefs(t, NewMemRepo())
-}
-
-func DoTestParentRefs(t *testing.T, repo NodeRepo) {
+func DoTestParentRefs(t *testing.T, repo fs.NodeRepo) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -280,23 +235,23 @@ func DoTestParentRefs(t *testing.T, repo NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := IndexDir(filepath.Join(path, "foo"), repo, nil)
+	foo := fs.IndexDir(filepath.Join(path, "foo"), repo, nil)
 	rootCount := 0
-	Walk(foo, func(node Node) bool {
+	fs.Walk(foo, func(node fs.Node) bool {
 		switch node.(type) {
-		case Dir:
-			dir := node.(Dir)
+		case fs.Dir:
+			dir := node.(fs.Dir)
 			if _, hasParent := dir.Parent(); !hasParent {
 				rootCount++
 			}
 			break
-		case File:
-			file := node.(File)
+		case fs.File:
+			file := node.(fs.File)
 			_, hasParent := file.Parent()
 			assert.Tf(t, hasParent, "%v is root?!", file.Info())
 			break
-		case Block:
-			block := node.(Block)
+		case fs.Block:
+			block := node.(fs.Block)
 			_, hasParent := block.Parent()
 			assert.Tf(t, hasParent, "%v is root?!", block.Info())
 			break
