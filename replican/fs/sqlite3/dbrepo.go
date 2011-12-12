@@ -1,6 +1,7 @@
 package sqlite3
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 
@@ -40,8 +41,8 @@ type DbRepo struct {
 }
 
 type dbBlock struct {
-	id int
-	parent int
+	id int64
+	parent int64
 	repo *DbRepo
 	info *fs.BlockInfo
 }
@@ -57,8 +58,8 @@ func (dbb *dbBlock) Info() *fs.BlockInfo {
 }
 	
 type dbFile struct {
-	id int
-	parent int
+	id int64
+	parent int64
 	repo *DbRepo
 	info *fs.FileInfo
 }
@@ -86,8 +87,8 @@ func (dbf *dbFile) Blocks() []fs.Block {
 }
 
 type dbDir struct {
-	id int
-	parent int
+	id int64
+	parent int64
 	repo *DbRepo
 	info *fs.DirInfo
 }
@@ -128,7 +129,7 @@ func (dbRepo *DbRepo) doRoot(db *sqlite3.Database) fs.FsNode {
 	stmt.Step()
 	values := stmt.Row()
 	dir := &dbDir{
-		id: values[0].(int),
+		id: values[0].(int64),
 		info: &fs.DirInfo {
 			Strong: values[1].(string),
 			Name: values[2].(string),
@@ -145,8 +146,8 @@ func (dbRepo *DbRepo) doWeakBlock(db *sqlite3.Database, weak int) (fs.Block, boo
 	stmt.Step()
 	values := stmt.Row()
 	block := &dbBlock{
-		id: values[0].(int),
-		parent: values[1].(int),
+		id: values[0].(int64),
+		parent: values[1].(int64),
 		info: &fs.BlockInfo {
 			Weak: weak,
 			Position: values[2].(int),
@@ -164,8 +165,8 @@ func (dbRepo *DbRepo) doBlock(db *sqlite3.Database, strong string) (fs.Block, bo
 	stmt.Step()
 	values := stmt.Row()
 	block := &dbBlock{
-		id: values[0].(int),
-		parent: values[1].(int),
+		id: values[0].(int64),
+		parent: values[1].(int64),
 		info: &fs.BlockInfo {
 			Weak: values[2].(int),
 			Position: values[3].(int),
@@ -183,8 +184,8 @@ func (dbRepo *DbRepo) doFile(db *sqlite3.Database, strong string) (fs.File, bool
 	stmt.Step()
 	values := stmt.Row()
 	file := &dbFile{
-		id: values[0].(int),
-		parent: values[1].(int),
+		id: values[0].(int64),
+		parent: values[1].(int64),
 		info: &fs.FileInfo {
 			Strong: strong,
 			Name: values[2].(string),
@@ -203,8 +204,8 @@ func (dbRepo *DbRepo) doDir(db *sqlite3.Database, strong string) (fs.Dir, bool) 
 	stmt.Step()
 	values := stmt.Row()
 	dir := &dbDir{ 
-		id: values[0].(int),
-		parent: values[1].(int),
+		id: values[0].(int64),
+		parent: values[1].(int64),
 		info: &fs.DirInfo {
 			Name: values[2].(string),
 			Mode: values[3].(uint32),
@@ -225,7 +226,7 @@ func (dbRepo *DbRepo) doAddBlock(db *sqlite3.Database, file fs.File, blockInfo *
 	defer stmt.Finalize()
 	values := stmt.Row()
 	block := &dbBlock{
-		id: values[0].(int),
+		id: values[0].(int64),
 		parent: dbfile.id,
 		info: blockInfo }
 	return block
@@ -243,7 +244,7 @@ func (dbRepo *DbRepo) doAddFile(db *sqlite3.Database, dir fs.Dir, fileInfo *fs.F
 	defer stmt.Finalize()
 	values := stmt.Row()
 	file := &dbFile{
-		id: values[0].(int),
+		id: values[0].(int64),
 		parent: dbdir.id,
 		info: fileInfo }
 	
@@ -255,26 +256,38 @@ func (dbRepo *DbRepo) doAddFile(db *sqlite3.Database, dir fs.Dir, fileInfo *fs.F
 }
 
 func (dbRepo *DbRepo) doAddDir(db *sqlite3.Database, dir fs.Dir, subdirInfo *fs.DirInfo) fs.Dir {
-	dbdir := dir.(*dbDir)
-	stmt, _ := db.Prepare(
-		`INSERT INTO dirs (parent, strong, name, mode) VALUES (?,?,?,?)`, 
-		dbdir.id, subdirInfo.Strong, subdirInfo.Name, subdirInfo.Mode)
-	defer stmt.Finalize()
+	var id int64
+	var stmt *sqlite3.Statement
+	var err os.Error
+	sql := `INSERT INTO dirs (parent, strong, name, mode) VALUES (?1,?2,?3,?4)`
+	if dbdir, is := dir.(*dbDir); is {
+		id = dbdir.id
+		stmt, err = db.Prepare(sql, 
+			dbdir.id, subdirInfo.Strong, subdirInfo.Name, int(subdirInfo.Mode))
+	} else {
+		id = int64(-1)
+		stmt, err = db.Prepare(sql,
+			nil, subdirInfo.Strong, subdirInfo.Name, int(subdirInfo.Mode))
+//			nil, subdirInfo.Strong, subdirInfo.Name, int(subdirInfo.Mode))
+	}
+	if err != nil { log.Printf("%v\n", err) }
 	stmt.Step()
+	stmt.Finalize()
 	
 	stmt, _ = db.Prepare(`SELECT last_insert_rowid()`)
-	defer stmt.Finalize()
+	stmt.Step()
 	values := stmt.Row()
+	stmt.Finalize()
 	subdir := &dbDir{
-		id: values[0].(int),
-		parent: dbdir.id,
+		id: values[0].(int64),
+		parent: id,
 		info: subdirInfo }
 	return subdir
 }
 
 func (dbRepo *DbRepo) doParentOf(db *sqlite3.Database, node fs.Node) (fs.FsNode, bool) {
 	var sql string
-	var id int
+	var id int64
 	switch node.(type) {
 	case *dbBlock:
 		id = node.(*dbBlock).parent
@@ -291,8 +304,8 @@ func (dbRepo *DbRepo) doParentOf(db *sqlite3.Database, node fs.Node) (fs.FsNode,
 		stmt.Step()
 		values := stmt.Row()
 		return &dbFile{
-			id: values[0].(int),
-			parent: values[1].(int),
+			id: values[0].(int64),
+			parent: values[1].(int64),
 			info: &fs.FileInfo {
 				Name: values[2].(string),
 				Mode: values[3].(uint32),
@@ -321,8 +334,8 @@ func (dbRepo *DbRepo) doParentOf(db *sqlite3.Database, node fs.Node) (fs.FsNode,
 	stmt.Step()
 	values := stmt.Row()
 	return &dbDir{
-		id: values[0].(int),
-		parent: values[1].(int),
+		id: values[0].(int64),
+		parent: values[1].(int64),
 		info: &fs.DirInfo {
 			Name: values[2].(string),
 			Mode: values[3].(uint32),
@@ -340,8 +353,8 @@ func (dbRepo *DbRepo) doSubdirsOf(db *sqlite3.Database, dir *dbDir) []fs.Dir {
 	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbDir{
-			id: values[0].(int),
-			parent: values[1].(int),
+			id: values[0].(int64),
+			parent: values[1].(int64),
 			info: &fs.DirInfo {
 				Name: values[2].(string),
 				Mode: values[3].(uint32),
@@ -361,8 +374,8 @@ func (dbRepo *DbRepo) doFilesOf(db *sqlite3.Database, dir *dbDir) []fs.File {
 	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbFile{
-			id: values[0].(int),
-			parent: values[1].(int),
+			id: values[0].(int64),
+			parent: values[1].(int64),
 			info: &fs.FileInfo {
 				Name: values[2].(string),
 				Mode: values[3].(uint32),
@@ -383,8 +396,8 @@ func (dbRepo *DbRepo) doBlocksOf(db *sqlite3.Database, file *dbFile) []fs.Block 
 	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbBlock{
-			id: values[0].(int),
-			parent: values[1].(int),
+			id: values[0].(int64),
+			parent: values[1].(int64),
 			info: &fs.BlockInfo {
 				Weak: values[2].(int),
 				Position: values[3].(int),
@@ -409,20 +422,20 @@ func NewDbRepo(rootPath string) *DbRepo {
 	dbRepo := &DbRepo{
 		RootPath:      rootPath,
 		
-		chanRoot:      make(chan *cmdRoot, 1),
-		chanWeakBlock: make(chan *cmdWeakBlock, 1),
-		chanBlock:     make(chan *cmdBlock, 1),
-		chanFile:      make(chan *cmdFile, 1),
-		chanDir:       make(chan *cmdDir, 1),
-		chanAddBlock:  make(chan *cmdAddBlock, 1),
-		chanAddFile:   make(chan *cmdAddFile, 1),
-		chanAddDir:    make(chan *cmdAddDir, 1),
+		chanRoot:      make(chan *cmdRoot),
+		chanWeakBlock: make(chan *cmdWeakBlock),
+		chanBlock:     make(chan *cmdBlock),
+		chanFile:      make(chan *cmdFile),
+		chanDir:       make(chan *cmdDir),
+		chanAddBlock:  make(chan *cmdAddBlock),
+		chanAddFile:   make(chan *cmdAddFile),
+		chanAddDir:    make(chan *cmdAddDir),
 		
-	chanParentOf: make(chan *cmdParentOf, 1),
-	chanSubdirsOf: make(chan *cmdSubdirsOf, 1),
-	chanFilesOf: make(chan *cmdFilesOf, 1),
-	chanBlocksOf: make(chan *cmdBlocksOf, 1),
-	chanUpdateStrong: make(chan *cmdUpdateStrong, 1),
+	chanParentOf: make(chan *cmdParentOf),
+	chanSubdirsOf: make(chan *cmdSubdirsOf),
+	chanFilesOf: make(chan *cmdFilesOf),
+	chanBlocksOf: make(chan *cmdBlocksOf),
+	chanUpdateStrong: make(chan *cmdUpdateStrong),
 	
 		exit:          make(chan bool, 1)}
 	go dbRepo.run()
@@ -433,72 +446,99 @@ func (dbRepo *DbRepo) dbPath() string {
 	return filepath.Join(dbRepo.RootPath, ".replican/db")
 }
 
+func (dbRepo *DbRepo) requireTables(db *sqlite3.Database) {
+	_, err := db.Execute(`CREATE TABLE IF NOT EXISTS blocks (
+		parent INTEGER,
+		strong TEXT,
+		weak INTEGER,
+		pos INTEGER)`)
+	if err != nil { log.Printf("%v", err) }
+	_, err = db.Execute(`CREATE TABLE IF NOT EXISTS files (
+		parent INTEGER,
+		strong TEXT,
+		name TEXT,
+		mode INTEGER,
+		size INTEGER)`)
+	if err != nil { log.Printf("%v", err) }
+	_, err = db.Execute(`CREATE TABLE IF NOT EXISTS dirs (
+		parent INTEGER,
+		strong TEXT,
+		name TEXT,
+		mode INTEGER)`)
+	if err != nil { log.Printf("%v", err) }
+}
+
 func (dbRepo *DbRepo) run() {
 	dbDir, _ := filepath.Split(dbRepo.dbPath())
 	os.MkdirAll(dbDir, 0755)
-	sqlite3.Session(dbRepo.dbPath(), func(db *sqlite3.Database) {
-
-		//		dbRepo.requireTables(db)
-	RUNNING:
-		for {
-			select {
-			case cmd := <-dbRepo.chanRoot:
-				cmd.result = dbRepo.doRoot(db)
-				dbRepo.chanRoot <- cmd
-				
-			case cmd := <-dbRepo.chanWeakBlock:
-				cmd.resBlock, cmd.resHas = dbRepo.doWeakBlock(db, cmd.argWeak)
-				dbRepo.chanWeakBlock <- cmd
-				
-			case cmd := <-dbRepo.chanBlock:
-				cmd.resBlock, cmd.resHas = dbRepo.doBlock(db, cmd.argStrong)
-				dbRepo.chanBlock <- cmd
-				
-			case cmd := <-dbRepo.chanFile:
-				cmd.resFile, cmd.resHas = dbRepo.doFile(db, cmd.argStrong)
-				dbRepo.chanFile <- cmd
-				
-			case cmd := <-dbRepo.chanDir:
-				cmd.resDir, cmd.resHas = dbRepo.doDir(db, cmd.argStrong)
-				dbRepo.chanDir <- cmd
-				
-			case cmd := <-dbRepo.chanAddBlock:
-				cmd.result = dbRepo.doAddBlock(db, cmd.argFile, cmd.argBlockInfo)
-				dbRepo.chanAddBlock <- cmd
-				
-			case cmd := <-dbRepo.chanAddFile:
-				cmd.result = dbRepo.doAddFile(db, cmd.argDir, cmd.argFileInfo, cmd.argBlocksInfo)
-				dbRepo.chanAddFile <- cmd
-				
-			case cmd := <-dbRepo.chanAddDir:
-				cmd.result = dbRepo.doAddDir(db, cmd.argDir, cmd.argSubDirInfo)
-				dbRepo.chanAddDir <- cmd
-			
-			case cmd := <-dbRepo.chanParentOf:
-				cmd.resNode, cmd.resHas = dbRepo.doParentOf(db, cmd.arg)
-				dbRepo.chanParentOf <- cmd
-				
-			case cmd := <-dbRepo.chanSubdirsOf:
-				cmd.result = dbRepo.doSubdirsOf(db, cmd.arg)
-				dbRepo.chanSubdirsOf <- cmd
-			
-			case cmd := <-dbRepo.chanFilesOf:
-				cmd.result = dbRepo.doFilesOf(db, cmd.arg)
-				dbRepo.chanFilesOf <- cmd
-			
-			case cmd := <-dbRepo.chanBlocksOf:
-				cmd.result = dbRepo.doBlocksOf(db, cmd.arg)
-				dbRepo.chanBlocksOf <- cmd
-			
-			case cmd := <-dbRepo.chanUpdateStrong:
-				cmd.result = dbRepo.doUpdateStrong(db, cmd.arg)
-				dbRepo.chanUpdateStrong <- cmd
-				
-			case _ = <-dbRepo.exit:
-				break RUNNING
-			}
+	sqlite3.Initialize()
+	defer sqlite3.Shutdown()
+	
+	log.Printf("database file: %v", dbRepo.dbPath())
+	db, err := sqlite3.Open(dbRepo.dbPath())
+	if err != nil { log.Printf("%v", err) }
+	dbRepo.requireTables(db)
+	
+RUNNING:
+	for {
+		select {
+		case cmd := <-dbRepo.chanRoot:
+			cmd.result = dbRepo.doRoot(db)
+			dbRepo.chanRoot <- cmd
+		
+		case cmd := <-dbRepo.chanWeakBlock:
+			cmd.resBlock, cmd.resHas = dbRepo.doWeakBlock(db, cmd.argWeak)
+			dbRepo.chanWeakBlock <- cmd
+		
+		case cmd := <-dbRepo.chanBlock:
+			cmd.resBlock, cmd.resHas = dbRepo.doBlock(db, cmd.argStrong)
+			dbRepo.chanBlock <- cmd
+		
+		case cmd := <-dbRepo.chanFile:
+			cmd.resFile, cmd.resHas = dbRepo.doFile(db, cmd.argStrong)
+			dbRepo.chanFile <- cmd
+		
+		case cmd := <-dbRepo.chanDir:
+			cmd.resDir, cmd.resHas = dbRepo.doDir(db, cmd.argStrong)
+			dbRepo.chanDir <- cmd
+		
+		case cmd := <-dbRepo.chanAddBlock:
+			cmd.result = dbRepo.doAddBlock(db, cmd.argFile, cmd.argBlockInfo)
+			dbRepo.chanAddBlock <- cmd
+		
+		case cmd := <-dbRepo.chanAddFile:
+			cmd.result = dbRepo.doAddFile(db, cmd.argDir, cmd.argFileInfo, cmd.argBlocksInfo)
+			dbRepo.chanAddFile <- cmd
+		
+		case cmd := <-dbRepo.chanAddDir:
+			cmd.result = dbRepo.doAddDir(db, cmd.argDir, cmd.argSubDirInfo)
+			dbRepo.chanAddDir <- cmd
+	
+		case cmd := <-dbRepo.chanParentOf:
+			cmd.resNode, cmd.resHas = dbRepo.doParentOf(db, cmd.arg)
+			dbRepo.chanParentOf <- cmd
+		
+		case cmd := <-dbRepo.chanSubdirsOf:
+			cmd.result = dbRepo.doSubdirsOf(db, cmd.arg)
+			dbRepo.chanSubdirsOf <- cmd
+	
+		case cmd := <-dbRepo.chanFilesOf:
+			cmd.result = dbRepo.doFilesOf(db, cmd.arg)
+			dbRepo.chanFilesOf <- cmd
+	
+		case cmd := <-dbRepo.chanBlocksOf:
+			cmd.result = dbRepo.doBlocksOf(db, cmd.arg)
+			dbRepo.chanBlocksOf <- cmd
+	
+		case cmd := <-dbRepo.chanUpdateStrong:
+			cmd.result = dbRepo.doUpdateStrong(db, cmd.arg)
+			dbRepo.chanUpdateStrong <- cmd
+		
+		case _ = <-dbRepo.exit:
+			break RUNNING
+		
 		}
-	})
+	}
 	close(dbRepo.exit)
 }
 
