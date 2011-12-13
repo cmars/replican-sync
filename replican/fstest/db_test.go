@@ -7,50 +7,58 @@ import (
 	"testing"
 )
 
+func createDbRepo() (*sqlite3.DbRepo, string) {
+	dbpath, _ := ioutil.TempFile("", "test.db")
+	dbpath.Close()
+	dbrepo, err := sqlite3.NewDbRepo(dbpath.Name())
+	assert.T(t, err == nil)
+	return dbrepo, dbpath.Name()
+}
+
 func TestDbDirIndex(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestDirIndex(t, sqlite3.NewDbRepo(dbpath))
+	DoTestDirIndex(t, dbrepo)
 }
 
 func TestDbVisitDirsOnly(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestVisitDirsOnly(t, sqlite3.NewDbRepo(dbpath))
+	DoTestVisitDirsOnly(t, dbrepo)
 }
 
 func TestDbVisitBlocks(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestVisitBlocks(t, sqlite3.NewDbRepo(dbpath))
+	DoTestVisitBlocks(t, dbrepo)
 }
 
 func TestDbNodeRelPath(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestNodeRelPath(t, sqlite3.NewDbRepo(dbpath))
+	DoTestNodeRelPath(t, dbrepo)
 }
 
 func TestDbStoreRelPath(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestStoreRelPath(t, sqlite3.NewDbRepo(dbpath))
+	DoTestStoreRelPath(t, dbrepo)
 }
 
 func TestDbDirResolve(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestDirResolve(t, sqlite3.NewDbRepo(dbpath))
+	DoTestDirResolve(t, dbrepo)
 }
 
 func TestDbDirDescent(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestDirDescent(t, sqlite3.NewDbRepo(dbpath))
+	DoTestDirDescent(t, dbrepo)
 }
 
 func TestDbParentRefs(t *testing.T) {
-	dbpath, _ := ioutil.TempDir("", "dbtest")
+	dbrepo, dbpath := createDbRepo()
 	defer os.RemoveAll(dbpath)
-	DoTestParentRefs(t, sqlite3.NewDbRepo(dbpath))
+	DoTestParentRefs(t, dbrepo)
 }

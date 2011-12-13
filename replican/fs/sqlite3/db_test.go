@@ -12,44 +12,21 @@ import (
 	"github.com/cmars/replican-sync/replican/treegen"
 	
 	"github.com/bmizerany/assert"
-	"github.com/kuroneko/gosqlite3"
 )
 
-func TestNop(t *testing.T) {
+func createDbRepo(t *testing.T) (*DbRepo, string) {
 	dbpath, _ := ioutil.TempFile("", "test.db")
 	dbpath.Close()
-	defer os.RemoveAll(dbpath.Name())
-	sqlite3.Session(dbpath.Name(), func(db *sqlite3.Database) {
-	})
-}
-
-func TestCreateTable(t *testing.T) {
-	dbpath, _ := ioutil.TempFile("", "test.db")
-	dbpath.Close()
-	defer os.RemoveAll(dbpath.Name())
-	sqlite3.Session(dbpath.Name(), func(db *sqlite3.Database) {
-		_, err := db.Execute("CREATE TABLE foo (name TEXT)")
-		assert.T(t, err == nil)
-		
-		stmt, err := db.Prepare("INSERT INTO foo (name) VALUES (?)", "bar")
-		stmt.Step()
-		stmt.Finalize()
-		
-		stmt, err = db.Prepare("SELECT rowid, name FROM foo")
-		stmt.Step()
-		values := stmt.Row()
-		assert.Equal(t, int64(1), values[0])
-		assert.Equal(t, "bar", values[1])
-		stmt.Finalize()
-	})
+	dbrepo, err := NewDbRepo(dbpath.Name())
+	assert.T(t, err == nil)
+	return dbrepo, dbpath.Name()
 }
 
 func TestDbRepo(t *testing.T) {
+	dbrepo, dbpath := createDbRepo(t)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	dbpath, _ := ioutil.TempDir("", "test")
-	defer os.RemoveAll(dbpath)
-	
-	dbrepo := NewDbRepo(dbpath)
+	defer os.Remove(dbpath)
+	defer dbrepo.Close()
 	
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
@@ -81,4 +58,3 @@ func TestDbRepo(t *testing.T) {
 	
 	fmt.Printf("%v\n", foo.Info())
 }
-
