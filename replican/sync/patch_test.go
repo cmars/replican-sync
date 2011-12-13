@@ -526,7 +526,7 @@ func TestPatchWeakCollision(t *testing.T) {
 
 	// Src and dst blocks have different strong checksum
 	srcRoot := srcStore.Repo().Root().(fs.Dir)
-	dstRoot := srcStore.Repo().Root().(fs.Dir)
+	dstRoot := dstStore.Repo().Root().(fs.Dir)
 	assert.Tf(t, srcRoot.Info().Strong != dstRoot.Info().Strong,
 		"wtf: %v == %v", srcRoot.Info().Strong, dstRoot.Info().Strong)
 
