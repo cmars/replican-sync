@@ -108,7 +108,7 @@ func (dbRepo *DbRepo) Root() fs.FsNode {
 		info: &fs.DirInfo {
 			Strong: values[1].(string),
 			Name: values[2].(string),
-			Mode: values[3].(uint32) } }
+			Mode: uint32(values[3].(int64)) } }
 	return dir
 }
 
@@ -126,7 +126,7 @@ func (dbRepo *DbRepo) WeakBlock(weak int) (fs.Block, bool) {
 		parent: values[1].(int64),
 		info: &fs.BlockInfo {
 			Weak: weak,
-			Position: values[2].(int),
+			Position: int(values[2].(int64)),
 			Strong: values[3].(string),
 			Parent: values[4].(string) } }
 	return block, true
@@ -145,8 +145,8 @@ func (dbRepo *DbRepo) Block(strong string) (fs.Block, bool) {
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.BlockInfo {
-			Weak: values[2].(int),
-			Position: values[3].(int),
+			Weak: int(values[2].(int64)),
+			Position: int(values[3].(int64)),
 			Strong: strong,
 			Parent: values[4].(string) } }
 	return block, true
@@ -167,7 +167,7 @@ func (dbRepo *DbRepo) File(strong string) (fs.File, bool) {
 		info: &fs.FileInfo {
 			Strong: strong,
 			Name: values[2].(string),
-			Mode: values[3].(uint32),
+			Mode: uint32(values[3].(int64)),
 			Size: values[4].(int64),
 			Parent: values[5].(string) } }
 	return file, true
@@ -187,7 +187,7 @@ func (dbRepo *DbRepo) Dir(strong string) (fs.Dir, bool) {
 		parent: values[1].(int64),
 		info: &fs.DirInfo {
 			Name: values[2].(string),
-			Mode: values[3].(uint32),
+			Mode: uint32(values[3].(int64)),
 			Strong: strong,
 			Parent: values[4].(string) } }
 	return dir, true
@@ -197,7 +197,7 @@ func (dbRepo *DbRepo) AddBlock(file fs.File, blockInfo *fs.BlockInfo) fs.Block {
 	dbfile := file.(*dbFile)
 	stmt, _ := dbRepo.db.Prepare(
 		`INSERT INTO blocks (parent, strong, weak, pos) VALUES (?,?,?,?)`, 
-		dbfile.id, blockInfo.Strong, blockInfo.Weak, blockInfo.Position)
+		dbfile.id, blockInfo.Strong, int64(blockInfo.Weak), int64(blockInfo.Position))
 	stmt.Step()
 	stmt.Finalize()
 	
@@ -217,7 +217,7 @@ func (dbRepo *DbRepo) AddFile(dir fs.Dir, fileInfo *fs.FileInfo, blocksInfo []*f
 	dbdir := dir.(*dbDir)
 	stmt, _ := dbRepo.db.Prepare(
 		`INSERT INTO files (parent, strong, name, mode, size) VALUES (?,?,?,?,?)`, 
-		dbdir.id, fileInfo.Strong, fileInfo.Name, fileInfo.Mode, fileInfo.Size)
+		dbdir.id, fileInfo.Strong, fileInfo.Name, int64(fileInfo.Mode), fileInfo.Size)
 	stmt.Step()
 	stmt.Finalize()
 	
@@ -246,12 +246,11 @@ func (dbRepo *DbRepo) AddDir(dir fs.Dir, subdirInfo *fs.DirInfo) fs.Dir {
 	if dbdir, is := dir.(*dbDir); is {
 		id = dbdir.id
 		stmt, err = dbRepo.db.Prepare(sql, 
-			dbdir.id, subdirInfo.Strong, subdirInfo.Name, int(subdirInfo.Mode))
+			dbdir.id, subdirInfo.Strong, subdirInfo.Name, int64(subdirInfo.Mode))
 	} else {
 		id = int64(-1)
 		stmt, err = dbRepo.db.Prepare(sql,
-			nil, subdirInfo.Strong, subdirInfo.Name, int(subdirInfo.Mode))
-//			nil, subdirInfo.Strong, subdirInfo.Name, int(subdirInfo.Mode))
+			nil, subdirInfo.Strong, subdirInfo.Name, int64(subdirInfo.Mode))
 	}
 	if err != nil { log.Printf("%v\n", err) }
 	stmt.Step()
@@ -275,7 +274,7 @@ func (dbRepo *DbRepo) ParentOf(node fs.Node) (fs.FsNode, bool) {
 	switch node.(type) {
 	case *dbBlock:
 		id = node.(*dbBlock).parent
-		if id == 0 {
+		if id == -1 {
 			return nil, false
 		}
 		
@@ -293,7 +292,7 @@ func (dbRepo *DbRepo) ParentOf(node fs.Node) (fs.FsNode, bool) {
 			parent: values[1].(int64),
 			info: &fs.FileInfo {
 				Name: values[2].(string),
-				Mode: values[3].(uint32),
+				Mode: uint32(values[3].(int64)),
 				Size: values[4].(int64),
 				Strong: values[5].(string),
 				Parent: values[6].(string) } }, true
@@ -310,7 +309,7 @@ func (dbRepo *DbRepo) ParentOf(node fs.Node) (fs.FsNode, bool) {
 			WHERE d.rowid = ?`
 	}
 	
-	if id == 0 {
+	if id == -1 {
 		return nil, false
 	}
 	
@@ -318,13 +317,22 @@ func (dbRepo *DbRepo) ParentOf(node fs.Node) (fs.FsNode, bool) {
 	stmt.Step()
 	values := stmt.Row()
 	stmt.Finalize()
+//	log.Printf("%v %v", id, values)
+	
+	if values[1] == nil {
+		values[1] = int64(-1)
+	}
+	if values[5] == nil {
+		values[5] = ""
+	}
+	
 	return &dbDir{
 		repo: dbRepo,
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.DirInfo {
 			Name: values[2].(string),
-			Mode: values[3].(uint32),
+			Mode: uint32(values[3].(int64)),
 			Strong: values[4].(string),
 			Parent: values[5].(string) } }, true
 }
@@ -335,42 +343,44 @@ func (dbRepo *DbRepo) SubdirsOf(dir *dbDir) []fs.Dir {
 		`SELECT d.rowid, p.rowid, d.name, d.mode, d.strong, p.strong 
 			FROM dirs AS d LEFT OUTER JOIN dirs AS p ON d.parent = p.rowid
 			WHERE p.rowid = ?`, dir.id)
-	defer stmt.Finalize()
-	
-	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
+	_, err := stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbDir{
 			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.DirInfo {
 				Name: values[2].(string),
-				Mode: values[3].(uint32),
+				Mode: uint32(values[3].(int64)),
 				Strong: values[4].(string),
 				Parent: values[5].(string) } })
 	})
+	if err != nil {
+		log.Printf("%v", err)
+	}
 	return result
 }
 
 func (dbRepo *DbRepo) FilesOf(dir *dbDir) []fs.File {
-	result := []fs.File{}
+	var result []fs.File
 	stmt, _ := dbRepo.db.Prepare(
 		`SELECT f.rowid, p.rowid, f.name, f.mode, f.size, f.strong, p.strong 
 			FROM files AS f LEFT OUTER JOIN dirs AS p ON f.parent = p.rowid
 			WHERE p.rowid = ?`, dir.id)
-	defer stmt.Finalize()
-	
-	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
+	_, err := stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbFile{
 			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.FileInfo {
 				Name: values[2].(string),
-				Mode: values[3].(uint32),
+				Mode: uint32(values[3].(int64)),
 				Size: values[4].(int64),
 				Strong: values[5].(string),
 				Parent: values[6].(string) } })
 	})
+	if err != nil {
+		log.Printf("%v", err)
+	}
 	return result
 }
 
@@ -380,16 +390,14 @@ func (dbRepo *DbRepo) BlocksOf(file *dbFile) []fs.Block {
 		`SELECT b.rowid, p.rowid, b.weak, b.pos, b.strong, p.strong 
 			FROM blocks AS b LEFT OUTER JOIN files AS p ON b.parent = p.rowid
 			WHERE p.rowid = ?`, file.id)
-	defer stmt.Finalize()
-	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbBlock{
 			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.BlockInfo {
-				Weak: values[2].(int),
-				Position: values[3].(int),
+				Weak: int(values[2].(int64)),
+				Position: int(values[3].(int64)),
 				Strong: values[4].(string),
 				Parent: values[5].(string) } })
 	})
@@ -399,13 +407,16 @@ func (dbRepo *DbRepo) BlocksOf(file *dbFile) []fs.Block {
 func (dbRepo *DbRepo) UpdateStrong(dir *dbDir) string {
 	newStrong := fs.CalcStrong(dir)
 	if newStrong != dir.info.Strong {
+//		log.Printf("newStrong: %v dir: %v", newStrong, dir)
 		stmt, err := dbRepo.db.Prepare(
-			`UPDATE dirs SET strong = ?1 WHERE rowid = ?2`, newStrong, dir.id)
+			`UPDATE dirs SET strong = ? WHERE rowid = ?`, newStrong, dir.id)
 		if err != nil {
 			log.Printf("%v", err)
 		}
 		stmt.Step()
 		stmt.Finalize()
+		
+		dir.info.Strong = newStrong
 	}
 	return newStrong
 }
@@ -426,25 +437,38 @@ func NewDbRepo(dbpath string) (*DbRepo, os.Error) {
 	return dbRepo, err
 }
 
-const cr_blocks_sql = `CREATE TABLE IF NOT EXISTS blocks (
+const cr_blocks = `CREATE TABLE IF NOT EXISTS blocks (
 		parent INTEGER,
 		strong TEXT,
 		weak INTEGER,
-		pos INTEGER)`
-const cr_files_sql = `CREATE TABLE IF NOT EXISTS files (
+		pos INTEGER);`
+
+const cr_bl_parent = `CREATE INDEX IF NOT EXISTS bl_parent ON blocks (parent);`
+const cr_bl_strong = `CREATE INDEX IF NOT EXISTS bl_strong ON blocks (strong);`
+const cr_bl_weak = `CREATE INDEX IF NOT EXISTS bl_weak ON blocks (weak);`
+const cr_files = `CREATE TABLE IF NOT EXISTS files (
 		parent INTEGER,
 		strong TEXT,
 		name TEXT,
 		mode INTEGER,
-		size INTEGER)`
-const cr_dirs_sql = `CREATE TABLE IF NOT EXISTS dirs (
+		size INTEGER);`
+const cr_fi_parent = `CREATE INDEX IF NOT EXISTS fi_parent ON files (parent);`
+const cr_fi_strong = `CREATE INDEX IF NOT EXISTS fi_strong ON files (strong);`
+const cr_dirs = `CREATE TABLE IF NOT EXISTS dirs (
 		parent INTEGER,
 		strong TEXT,
 		name TEXT,
-		mode INTEGER)`
+		mode INTEGER);`
+const cr_di_parent = `CREATE INDEX IF NOT EXISTS di_parent ON dirs (parent);`
+const cr_di_strong = `CREATE INDEX IF NOT EXISTS di_strong ON dirs (strong);`
+const dangerous = `PRAGMA synchronous = OFF;`
 
 func (dbRepo *DbRepo) createTables() os.Error {
-	for _, sql := range []string{ cr_blocks_sql, cr_files_sql, cr_dirs_sql } {
+	for _, sql := range []string{ 
+			cr_blocks, cr_bl_parent, cr_bl_strong, cr_bl_weak,
+			cr_files, cr_fi_parent, cr_fi_strong,
+			cr_dirs, cr_di_parent, cr_di_strong,
+			dangerous } {
 		_, err := dbRepo.db.Execute(sql)
 		if err != nil {
 			return err

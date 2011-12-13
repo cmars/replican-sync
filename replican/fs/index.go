@@ -62,7 +62,6 @@ func newVisitor(path string, repo NodeRepo) *indexVisitor {
 	if rootInfo, err := os.Stat(path); err == nil {
 		visitor.VisitDir(path, rootInfo)
 		visitor.root = visitor.dirMap[path]
-		visitor.root.Info().Name = ""
 	}
 
 	return visitor
@@ -82,8 +81,11 @@ func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
 			Mode: f.Mode}
 		if hasParent {
 			info.Parent = parentDir.Info().Strong
+			dir = visitor.repo.AddDir(parentDir, info)
+		} else {
+			info.Name = ""
+			dir = visitor.repo.AddDir(nil, info)
 		}
-		dir = visitor.repo.AddDir(parentDir, info)
 		visitor.dirMap[path] = dir
 	}
 
@@ -123,8 +125,10 @@ func IndexDir(path string, repo NodeRepo, errors chan<- os.Error) Dir {
 	}()
 	<-control
 
-	visitor.root.UpdateStrong()
-
+	if visitor.root != nil {
+		visitor.root.UpdateStrong()
+	}
+	
 	return visitor.root
 }
 
