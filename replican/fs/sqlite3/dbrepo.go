@@ -129,6 +129,7 @@ func (dbRepo *DbRepo) doRoot(db *sqlite3.Database) fs.FsNode {
 	stmt.Step()
 	values := stmt.Row()
 	dir := &dbDir{
+		repo: dbRepo,
 		id: values[0].(int64),
 		info: &fs.DirInfo {
 			Strong: values[1].(string),
@@ -146,6 +147,7 @@ func (dbRepo *DbRepo) doWeakBlock(db *sqlite3.Database, weak int) (fs.Block, boo
 	stmt.Step()
 	values := stmt.Row()
 	block := &dbBlock{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.BlockInfo {
@@ -165,6 +167,7 @@ func (dbRepo *DbRepo) doBlock(db *sqlite3.Database, strong string) (fs.Block, bo
 	stmt.Step()
 	values := stmt.Row()
 	block := &dbBlock{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.BlockInfo {
@@ -184,6 +187,7 @@ func (dbRepo *DbRepo) doFile(db *sqlite3.Database, strong string) (fs.File, bool
 	stmt.Step()
 	values := stmt.Row()
 	file := &dbFile{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.FileInfo {
@@ -204,6 +208,7 @@ func (dbRepo *DbRepo) doDir(db *sqlite3.Database, strong string) (fs.Dir, bool) 
 	stmt.Step()
 	values := stmt.Row()
 	dir := &dbDir{ 
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.DirInfo {
@@ -219,13 +224,15 @@ func (dbRepo *DbRepo) doAddBlock(db *sqlite3.Database, file fs.File, blockInfo *
 	stmt, _ := db.Prepare(
 		`INSERT INTO blocks (parent, strong, weak, pos) VALUES (?,?,?,?)`, 
 		dbfile.id, blockInfo.Strong, blockInfo.Weak, blockInfo.Position)
-	defer stmt.Finalize()
 	stmt.Step()
+	stmt.Finalize()
 	
 	stmt, _ = db.Prepare(`SELECT last_insert_rowid()`)
-	defer stmt.Finalize()
+	stmt.Step()
 	values := stmt.Row()
+	stmt.Finalize()
 	block := &dbBlock{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: dbfile.id,
 		info: blockInfo }
@@ -237,13 +244,15 @@ func (dbRepo *DbRepo) doAddFile(db *sqlite3.Database, dir fs.Dir, fileInfo *fs.F
 	stmt, _ := db.Prepare(
 		`INSERT INTO files (parent, strong, name, mode, size) VALUES (?,?,?,?,?)`, 
 		dbdir.id, fileInfo.Strong, fileInfo.Name, fileInfo.Mode, fileInfo.Size)
-	defer stmt.Finalize()
 	stmt.Step()
+	stmt.Finalize()
 	
 	stmt, _ = db.Prepare(`SELECT last_insert_rowid()`)
-	defer stmt.Finalize()
+	stmt.Step()
 	values := stmt.Row()
+	stmt.Finalize()
 	file := &dbFile{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: dbdir.id,
 		info: fileInfo }
@@ -279,6 +288,7 @@ func (dbRepo *DbRepo) doAddDir(db *sqlite3.Database, dir fs.Dir, subdirInfo *fs.
 	values := stmt.Row()
 	stmt.Finalize()
 	subdir := &dbDir{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: id,
 		info: subdirInfo }
@@ -300,10 +310,11 @@ func (dbRepo *DbRepo) doParentOf(db *sqlite3.Database, node fs.Node) (fs.FsNode,
 			WHERE f.rowid = ?`
 		
 		stmt, _ := db.Prepare(sql, id)
-		defer stmt.Finalize()
 		stmt.Step()
 		values := stmt.Row()
+		stmt.Finalize()
 		return &dbFile{
+			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.FileInfo {
@@ -330,10 +341,11 @@ func (dbRepo *DbRepo) doParentOf(db *sqlite3.Database, node fs.Node) (fs.FsNode,
 	}
 	
 	stmt, _ := db.Prepare(sql, id)
-	defer stmt.Finalize()
 	stmt.Step()
 	values := stmt.Row()
+	stmt.Finalize()
 	return &dbDir{
+		repo: dbRepo,
 		id: values[0].(int64),
 		parent: values[1].(int64),
 		info: &fs.DirInfo {
@@ -353,6 +365,7 @@ func (dbRepo *DbRepo) doSubdirsOf(db *sqlite3.Database, dir *dbDir) []fs.Dir {
 	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbDir{
+			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.DirInfo {
@@ -374,6 +387,7 @@ func (dbRepo *DbRepo) doFilesOf(db *sqlite3.Database, dir *dbDir) []fs.File {
 	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbFile{
+			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.FileInfo {
@@ -396,6 +410,7 @@ func (dbRepo *DbRepo) doBlocksOf(db *sqlite3.Database, file *dbFile) []fs.Block 
 	
 	stmt.All(func (_ *sqlite3.Statement, values ...interface{}){
 		result = append(result, &dbBlock{
+			repo: dbRepo,
 			id: values[0].(int64),
 			parent: values[1].(int64),
 			info: &fs.BlockInfo {
