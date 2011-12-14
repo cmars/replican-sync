@@ -269,7 +269,7 @@ type SrcFileDownload struct {
 }
 
 func (sfd *SrcFileDownload) String() string {
-	return fmt.Sprintf("Copy entire source %s to %s", sfd.SrcFile.Info().Strong, sfd.Path)
+	return fmt.Sprintf("Copy entire source %s to %s", sfd.SrcFile.Info().Strong, sfd.Path.Resolve())
 }
 
 func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {

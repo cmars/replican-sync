@@ -25,8 +25,7 @@ func printPlan(plan *PatchPlan) {
 func TestPatch(t *testing.T) {
 	srcPath := "../../testroot/My Music/0 10k 30.mp4"
 	dstPath := filepath.Join(os.TempDir(), "foo.mp4")
-
-	os.Remove(dstPath)
+	os.RemoveAll(dstPath)
 
 	origDstF, err := os.Open("../../testroot/My Music/0 10k 30 munged.mp4")
 	assert.Tf(t, err == nil, "%v", err)

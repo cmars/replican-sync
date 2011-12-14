@@ -137,6 +137,10 @@ func (store *localBase) Resolve(relpath string) string {
 	return filepath.Join(store.RootPath(), relpath)
 }
 
+func (store *LocalFileStore) Resolve(_ string) string {
+	return store.RootPath()
+}
+
 func (store *localBase) RootPath() string { return store.rootPath }
 
 func (store *localBase) Repo() NodeRepo { return store.repo }
@@ -170,7 +174,22 @@ func (store *localBase) ReadInto(strong string, from int64, length int64, writer
 	}
 
 	path := store.Resolve(RelPath(file))
+	return store.readInto(path, from, length, writer)
+}
 
+func (store *LocalFileStore) ReadInto(strong string, from int64, length int64, writer io.Writer) (int64, os.Error) {
+
+	file, has := store.repo.File(strong)
+	if !has {
+		return 0,
+			os.NewError(fmt.Sprintf("File with strong checksum %s not found", strong))
+	}
+
+	path := store.Resolve(RelPath(file))
+	return store.readInto(path, from, length, writer)
+}
+
+func (store *localBase) readInto(path string, from int64, length int64, writer io.Writer) (int64, os.Error) {
 	fh, err := os.Open(path)
 	if fh == nil {
 		return 0, err
