@@ -155,13 +155,24 @@ func TestMatchAppend(t *testing.T) {
 // Test the patch planner on a case where the source file has the same 
 // prefix as destination, but has been appended to.
 // Execute the patch plan and check both resulting trees are identical.
+
 func TestPatchFileAppend(t *testing.T) {
+	DoTestPatchFileAppend(t, mkMemRepo)
+}
+
+func TestDbPatchFileAppend(t *testing.T) {
+	DoTestPatchFileAppend(t, mkDbRepo)
+}
+
+func DoTestPatchFileAppend(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -169,7 +180,9 @@ func TestPatchFileAppend(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -220,13 +233,24 @@ func TestPatchFileAppend(t *testing.T) {
 // Test the patch planner on a case where the source file is a shorter,
 // truncated version of the destination.
 // Execute the patch plan and check both resulting trees are identical.
+
 func TestPatchFileTruncate(t *testing.T) {
+	DoTestPatchFileTruncate(t, mkMemRepo)
+}
+
+func TestDbPatchFileTruncate(t *testing.T) {
+	DoTestPatchFileTruncate(t, mkDbRepo)
+}
+
+func DoTestPatchFileTruncate(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -234,7 +258,9 @@ func TestPatchFileTruncate(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -280,7 +306,16 @@ func TestPatchFileTruncate(t *testing.T) {
 }
 
 // Test the patch planner's ability to track adding a bunch of new files.
+
 func TestPatchAdd(t *testing.T) {
+	DoTestPatchAdd(t, mkMemRepo)
+}
+
+func TestDbPatchAdd(t *testing.T) {
+	DoTestPatchAdd(t, mkDbRepo)
+}
+
+func DoTestPatchAdd(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 
 	files := []treegen.Generated{}
@@ -291,14 +326,18 @@ func TestPatchAdd(t *testing.T) {
 	treeSpec := tg.D("foo", tg.D("bar", files...))
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(filepath.Join(srcpath, "foo"), fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(filepath.Join(srcpath, "foo"), srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
 	treeSpec = tg.D("foo", tg.D("bar"), tg.D("baz"))
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(filepath.Join(dstpath, "foo"), fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(filepath.Join(dstpath, "foo"), dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
