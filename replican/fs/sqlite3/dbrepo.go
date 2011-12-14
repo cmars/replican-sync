@@ -98,10 +98,14 @@ func (dbd *dbDir) UpdateStrong() string {
 
 func (dbRepo *DbRepo) Root() fs.FsNode {
 	stmt, _ := dbRepo.db.Prepare(
-		"SELECT rowid, strong, name, mode FROM dirs WHERE parent = NULL")
+		"SELECT rowid, strong, name, mode FROM dirs WHERE parent IS NULL")
 	defer stmt.Finalize()
 	stmt.Step()
 	values := stmt.Row()
+	//log.Printf("%v", values)
+	if values[0] == nil { // row came back null -- no matches?!
+		return nil
+	}
 	dir := &dbDir{
 		repo: dbRepo,
 		id: values[0].(int64),
@@ -120,6 +124,9 @@ func (dbRepo *DbRepo) WeakBlock(weak int) (fs.Block, bool) {
 	defer stmt.Finalize()
 	stmt.Step()
 	values := stmt.Row()
+	if values[0] == nil { // row came back null -- no matches
+		return nil, false
+	}
 	block := &dbBlock{
 		repo: dbRepo,
 		id: values[0].(int64),
@@ -140,6 +147,9 @@ func (dbRepo *DbRepo) Block(strong string) (fs.Block, bool) {
 	defer stmt.Finalize()
 	stmt.Step()
 	values := stmt.Row()
+	if values[0] == nil { // row came back null -- no matches
+		return nil, false
+	}
 	block := &dbBlock{
 		repo: dbRepo,
 		id: values[0].(int64),
@@ -160,6 +170,15 @@ func (dbRepo *DbRepo) File(strong string) (fs.File, bool) {
 	defer stmt.Finalize()
 	stmt.Step()
 	values := stmt.Row()
+	if values[0] == nil { // row came back null -- no matches
+		return nil, false
+	}
+	if values[1] == nil {
+		values[1] = int64(-1)
+	}
+	if values[5] == nil {
+		values[5] = ""
+	}
 	file := &dbFile{
 		repo: dbRepo,
 		id: values[0].(int64),
@@ -181,6 +200,15 @@ func (dbRepo *DbRepo) Dir(strong string) (fs.Dir, bool) {
 	defer stmt.Finalize()
 	stmt.Step()
 	values := stmt.Row()
+	if values[0] == nil {
+		return nil, false
+	}
+	if values[1] == nil {
+		values[1] = int64(-1)
+	}
+	if values[4] == nil {
+		values[4] = ""
+	}
 	dir := &dbDir{ 
 		repo: dbRepo,
 		id: values[0].(int64),
@@ -285,6 +313,15 @@ func (dbRepo *DbRepo) ParentOf(node fs.Node) (fs.FsNode, bool) {
 		stmt, _ := dbRepo.db.Prepare(sql, id)
 		stmt.Step()
 		values := stmt.Row()
+		if values[0] == nil { // row came back null -- no matches
+			return nil, false
+		}
+		if values[1] == nil {
+			values[1] = int64(-1)
+		}
+		if values[6] == nil {
+			values[6] = ""
+		}
 		stmt.Finalize()
 		return &dbFile{
 			repo: dbRepo,
@@ -318,6 +355,10 @@ func (dbRepo *DbRepo) ParentOf(node fs.Node) (fs.FsNode, bool) {
 	values := stmt.Row()
 	stmt.Finalize()
 //	log.Printf("%v %v", id, values)
+	
+	if values[0] == nil { // row came back null -- no matches
+		return nil, false
+	}
 	
 	if values[1] == nil {
 		values[1] = int64(-1)

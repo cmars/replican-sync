@@ -1,7 +1,7 @@
 package sqlite3	
 
 import (
-	"fmt"
+//	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -56,5 +56,23 @@ func TestDbRepo(t *testing.T) {
 	
 	foo := fs.IndexDir(filepath.Join(path, "foo"), dbrepo, nil)
 	
-	fmt.Printf("%v\n", foo.Info())
+	dbmemrepo, err := NewDbRepo(":memory:")
+	assert.T(t, err == nil)
+	
+	memfoo := fs.IndexDir(filepath.Join(path, "foo"), dbmemrepo, nil)
+	
+	assert.Equal(t, foo.Info().Strong, memfoo.Info().Strong)
 }
+
+func TestRootWorks(t *testing.T) {
+	tg := treegen.New()
+	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
+	path := treegen.TestTree(t, treeSpec)
+	defer os.RemoveAll(path)
+	
+	dbrepo, err := NewDbRepo(":memory:")
+	assert.T(t, err == nil)
+	
+	fs.IndexDir(filepath.Join(path, "foo"), dbrepo, nil)
+}
+

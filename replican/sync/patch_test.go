@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/fs"
+	"github.com/cmars/replican-sync/replican/fs/sqlite3"
 	"github.com/cmars/replican-sync/replican/treegen"
 	"strings"
 	"testing"
@@ -55,21 +56,52 @@ func TestPatch(t *testing.T) {
 	assert.Equal(t, srcFileInfo.Strong, dstFileInfo.Strong)
 }
 
+type repoMaker func(t *testing.T) fs.NodeRepo
+
+func mkMemRepo(_ *testing.T) fs.NodeRepo {
+	return fs.NewMemRepo()
+}
+
+func mkDbRepo(t *testing.T) fs.NodeRepo {
+	dbrepo, err := sqlite3.NewDbRepo(":memory:")
+	assert.T(t, err == nil)
+	return dbrepo
+}
+
 // Test the patch planner on two identical directory structures.
+
 func TestPatchIdentity(t *testing.T) {
+	DoTestPatchIdentity(t, mkMemRepo)
+}
+
+func TestDbPatchIdentity(t *testing.T) {
+	DoTestPatchIdentity(t, mkDbRepo)
+}
+
+func DoTestPatchIdentity(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
-
+	
+	assert.Equal(t, "1b1979b8746948cedc81488e92d1ad715e38bbfc", 
+		srcStore.Repo().Root().(fs.Dir).Info().Strong)
+	
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
+	assert.Equal(t, "1b1979b8746948cedc81488e92d1ad715e38bbfc", 
+		dstStore.Repo().Root().(fs.Dir).Info().Strong)
+	
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	//	printPlan(patchPlan)
 

@@ -20,6 +20,8 @@ type NodeRepo interface {
 	AddFile(dir Dir, fileInfo *FileInfo, blocksInfo []*BlockInfo) File
 
 	AddDir(dir Dir, subdirInfo *DirInfo) Dir
+	
+	Close()
 }
 
 type memBlock struct {
@@ -193,4 +195,7 @@ func (repo *MemRepo) AddDir(dir Dir, info *DirInfo) Dir {
 		repo.root = subdir
 	}
 	return subdir
+}
+
+func (repo *MemRepo) Close() {
 }
