@@ -27,12 +27,12 @@ func main() {
 	srcpath := files[0]
 	dstpath := files[1]
 
-	srcStore, err := fs.NewLocalStore(srcpath)
+	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
 	if err != nil {
 		die(fmt.Sprintf("Failed to read source %s", srcpath), err)
 	}
 
-	dstStore, err := fs.NewLocalStore(dstpath)
+	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
 	if err != nil {
 		die(fmt.Sprintf("Failed to read destination %s", srcpath), err)
 	}

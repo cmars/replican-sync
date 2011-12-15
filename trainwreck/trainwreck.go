@@ -32,12 +32,12 @@ func main() {
 		buf := randBuf(i)
 		block := fs.IndexBlock(buf)
 
-		collision, matched := weaks[block.Weak()]
+		collision, matched := weaks[block.Weak]
 		if matched {
 			fmt.Printf("Collision found: seeds %d and %d\n", collision, i)
 			nhits++
 		} else {
-			weaks[block.Weak()] = i
+			weaks[block.Weak] = i
 		}
 	}
 

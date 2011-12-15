@@ -351,13 +351,24 @@ func DoTestPatchAdd(t *testing.T, mkrepo repoMaker) {
 }
 
 // Test patch planner on a file rename. Contents remain the same.
+
 func TestPatchRenameFileSameDir(t *testing.T) {
+	DoTestPatchRenameFileSameDir(t, mkMemRepo)
+}
+
+func TestDbPatchRenameFileSameDir(t *testing.T) {
+	DoTestPatchRenameFileSameDir(t, mkDbRepo)
+}
+
+func DoTestPatchRenameFileSameDir(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -365,7 +376,9 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -379,7 +392,16 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 
 // Test patch planner on a file directory restructuring between 
 // source and destination, where files have identical content in both.
+
 func TestPatchRenameFileDifferentDir(t *testing.T) {
+	DoTestPatchRenameFileDifferentDir(t, mkMemRepo)
+}
+
+func TestDbPatchRenameFileDifferentDir(t *testing.T) {
+	DoTestPatchRenameFileDifferentDir(t, mkDbRepo)
+}
+
+func DoTestPatchRenameFileDifferentDir(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("gloo",
@@ -390,7 +412,9 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -400,7 +424,9 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -423,7 +449,16 @@ func TestPatchRenameFileDifferentDir(t *testing.T) {
 // destination have a direct conflict in structure.
 // A path in the source is a directory, path in destination 
 // already contains a file at that location.
+
 func TestPatchSimpleDirFileConflict(t *testing.T) {
+	DoTestPatchSimpleDirFileConflict(t, mkMemRepo)
+}
+
+func TestDbPatchSimpleDirFileConflict(t *testing.T) {
+	DoTestPatchSimpleDirFileConflict(t, mkDbRepo)
+}
+
+func DoTestPatchSimpleDirFileConflict(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("gloo",
@@ -434,7 +469,9 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -443,7 +480,9 @@ func TestPatchSimpleDirFileConflict(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -487,7 +526,16 @@ func assertNoRelocs(t *testing.T, path string) {
 // destination have a direct conflict in structure.
 // A path in the source is a directory, path in destination 
 // already contains a file at that location.
+
 func TestPatchRelocConflict(t *testing.T) {
+	DoTestPatchRelocConflict(t, mkMemRepo)
+}
+
+func TestDbPatchRelocConflict(t *testing.T) {
+	DoTestPatchRelocConflict(t, mkDbRepo)
+}
+
+func DoTestPatchRelocConflict(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("gloo",
@@ -498,7 +546,9 @@ func TestPatchRelocConflict(t *testing.T) {
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -507,7 +557,9 @@ func TestPatchRelocConflict(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -539,6 +591,14 @@ func TestPatchRelocConflict(t *testing.T) {
 }
 
 func TestPatchDepConflict(t *testing.T) {
+	DoTestPatchDepConflict(t, mkMemRepo)
+}
+
+func TestDbPatchDepConflict(t *testing.T) {
+	DoTestPatchDepConflict(t, mkDbRepo)
+}
+
+func DoTestPatchDepConflict(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("gloo",
@@ -549,7 +609,9 @@ func TestPatchDepConflict(t *testing.T) {
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -558,7 +620,9 @@ func TestPatchDepConflict(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -571,13 +635,23 @@ func TestPatchDepConflict(t *testing.T) {
 }
 
 func TestPatchWeakCollision(t *testing.T) {
+	DoTestPatchWeakCollision(t, mkMemRepo)
+}
+
+func TestDbPatchWeakCollision(t *testing.T) {
+	DoTestPatchWeakCollision(t, mkDbRepo)
+}
+
+func DoTestPatchWeakCollision(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.F("bar", tg.B(6806, 65536)))
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -586,7 +660,9 @@ func TestPatchWeakCollision(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	// Src and dst blocks have same weak checksum
@@ -619,6 +695,14 @@ func TestPatchWeakCollision(t *testing.T) {
 }
 
 func TestPatchRenameScope(t *testing.T) {
+	DoTestPatchRenameScope(t, mkMemRepo)
+}
+
+func TestDbPatchRenameScope(t *testing.T) {
+	DoTestPatchRenameScope(t, mkDbRepo)
+}
+
+func DoTestPatchRenameScope(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.F("bar", tg.B(6806, 65536)),
@@ -626,7 +710,9 @@ func TestPatchRenameScope(t *testing.T) {
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -636,7 +722,9 @@ func TestPatchRenameScope(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -658,6 +746,14 @@ func TestPatchRenameScope(t *testing.T) {
 }
 
 func TestPatchPreserveKeeps(t *testing.T) {
+	DoTestPatchPreserveKeeps(t, mkMemRepo)
+}
+
+func TestDbPatchPreserveKeeps(t *testing.T) {
+	DoTestPatchPreserveKeeps(t, mkDbRepo)
+}
+
+func DoTestPatchPreserveKeeps(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.F("bar", tg.B(6806, 65536)),
@@ -665,7 +761,9 @@ func TestPatchPreserveKeeps(t *testing.T) {
 
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -675,7 +773,9 @@ func TestPatchPreserveKeeps(t *testing.T) {
 
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -692,6 +792,14 @@ func TestPatchPreserveKeeps(t *testing.T) {
 }
 
 func TestClean(t *testing.T) {
+	DoTestClean(t, mkMemRepo)
+}
+
+func TestDbClean(t *testing.T) {
+	DoTestClean(t, mkDbRepo)
+}
+
+func DoTestClean(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -700,7 +808,9 @@ func TestClean(t *testing.T) {
 				tg.F("a", tg.B(42, 65537)))))
 	srcpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -727,7 +837,9 @@ func TestClean(t *testing.T) {
 				tg.F("III", tg.B(111, 65537)))))
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	onePath := dstStore.Resolve(filepath.Join("foo", "baz", "uno", "1"))
@@ -754,6 +866,14 @@ func TestClean(t *testing.T) {
 }
 
 func TestSetModeNew(t *testing.T) {
+	DoTestSetModeNew(t, mkMemRepo)
+}
+
+func TestDbSetModeNew(t *testing.T) {
+	DoTestSetModeNew(t, mkDbRepo)
+}
+
+func DoTestSetModeNew(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -764,14 +884,18 @@ func TestSetModeNew(t *testing.T) {
 	os.Chmod(filepath.Join(srcpath, "foo", "bar", "aleph", "A"), 0765)
 	os.Chmod(filepath.Join(srcpath, "foo", "bar"), 0711)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
 	treeSpec = tg.D("foo")
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
@@ -807,6 +931,14 @@ func TestSetModeNew(t *testing.T) {
 }
 
 func TestSetModeOverwrite(t *testing.T) {
+	DoTestSetModeOverwrite(t, mkMemRepo)
+}
+
+func TestDbSetModeOverwrite(t *testing.T) {
+	DoTestSetModeOverwrite(t, mkDbRepo)
+}
+
+func DoTestSetModeOverwrite(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -817,7 +949,9 @@ func TestSetModeOverwrite(t *testing.T) {
 	os.Chmod(filepath.Join(srcpath, "foo", "bar", "aleph", "A"), 0765)
 	os.Chmod(filepath.Join(srcpath, "foo", "bar"), 0711)
 	defer os.RemoveAll(srcpath)
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcRepo := mkrepo(t)
+	defer srcRepo.Close()
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
 
 	tg = treegen.New()
@@ -830,7 +964,9 @@ func TestSetModeOverwrite(t *testing.T) {
 	os.Chmod(filepath.Join(dstpath, "foo", "bar", "aleph", "A"), 0600)
 	os.Chmod(filepath.Join(dstpath, "foo", "bar"), 0700)
 	defer os.RemoveAll(dstpath)
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstRepo := mkrepo(t)
+	defer dstRepo.Close()
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
 	patchPlan := NewPatchPlan(srcStore, dstStore)
