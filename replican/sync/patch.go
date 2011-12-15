@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+//	"log"
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/fs"
@@ -314,13 +315,15 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 
 	// Find all the FsNode matches
 	fs.Walk(srcStore.Repo().Root(), func(srcNode fs.Node) bool {
-
+		
 		// Ignore non-FsNodes
 		srcFsNode, isSrcFsNode := srcNode.(fs.FsNode)
 		if !isSrcFsNode {
 			return false
 		}
 
+//		log.Printf("In src: %s", fs.RelPath(srcFsNode))
+		
 		srcFile, isSrcFile := srcNode.(fs.File)
 		srcPath := fs.RelPath(srcFsNode)
 
@@ -349,13 +352,12 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 		dstFilePath := dstStore.Resolve(srcPath)
 		dstFileInfo, _ := os.Stat(dstFilePath)
 
-		//		fmt.Printf("srcPath=%s hasDstNode=%v isDstFsNode=%v isSrcFile=%v, isDstFile=%v\n%v\n\n",
-		//			srcPath, hasDstNode, isDstFsNode, isSrcFile, isDstFile, dstNode)
-
 		// Resolve dst node that matches strong checksum with source
 		if hasDstNode && isSrcFile == isDstFile {
 			dstPath := fs.RelPath(dstNode)
 			relocRefs[dstPath]++ // dstPath will be used in this cmd, inc ref count
+
+//			log.Printf("srcPath=%s dstPath=%s", srcPath, dstPath)
 
 			if srcPath != dstPath {
 				// Local dst file needs to be renamed or copied to src path

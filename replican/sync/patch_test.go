@@ -27,6 +27,7 @@ func TestPatch(t *testing.T) {
 	srcPath := "../../testroot/My Music/0 10k 30.mp4"
 	dstPath := filepath.Join(os.TempDir(), "foo.mp4")
 	os.RemoveAll(dstPath)
+	defer os.RemoveAll(dstPath)
 
 	origDstF, err := os.Open("../../testroot/My Music/0 10k 30 munged.mp4")
 	assert.Tf(t, err == nil, "%v", err)
@@ -735,9 +736,27 @@ func DoTestPatchRenameScope(t *testing.T, mkrepo repoMaker) {
 
 	errorChan := make(chan os.Error)
 	go func() {
+		// The actual content of dst after the patch depends on 
+		// which file the repo chooses when matching foo/bar 
+		// to baz or blop in dst.
+		// 
+		// If blop matches, it will get renamed to bar and the trees will 
+		// become identical. However if baz matches, blop will be left in place.
+		
 		srcDir := fs.IndexDir(srcpath, fs.NewMemRepo(), errorChan)
 		dstDir := fs.IndexDir(dstpath, fs.NewMemRepo(), errorChan)
-		assert.Equal(t, srcDir.Info().Strong, dstDir.Info().Strong)
+		
+		for _, path := range []string{ "foo/bar", "foo/baz" } {
+			srcNode, has := fs.Lookup(srcDir, path)
+			assert.T(t, has)
+			dstNode, has := fs.Lookup(dstDir, path)
+			assert.T(t, has)
+			
+			assert.Equal(t, 
+				srcNode.(fs.File).Info().Strong,
+				dstNode.(fs.File).Info().Strong)
+		}
+		
 		close(errorChan)
 	}()
 	for err := range errorChan {
