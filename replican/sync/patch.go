@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-//	"log"
+	//	"log"
 	"os"
 	"path/filepath"
 	"github.com/cmars/replican-sync/replican/fs"
@@ -315,15 +315,15 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 
 	// Find all the FsNode matches
 	fs.Walk(srcStore.Repo().Root(), func(srcNode fs.Node) bool {
-		
+
 		// Ignore non-FsNodes
 		srcFsNode, isSrcFsNode := srcNode.(fs.FsNode)
 		if !isSrcFsNode {
 			return false
 		}
 
-//		log.Printf("In src: %s", fs.RelPath(srcFsNode))
-		
+		//		log.Printf("In src: %s", fs.RelPath(srcFsNode))
+
 		srcFile, isSrcFile := srcNode.(fs.File)
 		srcPath := fs.RelPath(srcFsNode)
 
@@ -357,7 +357,7 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 			dstPath := fs.RelPath(dstNode)
 			relocRefs[dstPath]++ // dstPath will be used in this cmd, inc ref count
 
-//			log.Printf("srcPath=%s dstPath=%s", srcPath, dstPath)
+			//			log.Printf("srcPath=%s dstPath=%s", srcPath, dstPath)
 
 			if srcPath != dstPath {
 				// Local dst file needs to be renamed or copied to src path

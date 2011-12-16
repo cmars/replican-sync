@@ -14,10 +14,10 @@ import (
 func DoTestDirIndex(t *testing.T, repo fs.NodeRepo) {
 	dir := fs.IndexDir("testroot/", repo, nil)
 	assert.T(t, dir != nil)
-	
+
 	assert.Equal(t, 2, len(dir.SubDirs()))
 	assert.Equal(t, 4, len(dir.Files()))
-	
+
 	assert.Equal(t, "feab33f9685531a1c1c9c22d5d8af98267ca9426", dir.Info().Strong)
 
 	var myMusic fs.Dir = dir.SubDirs()[0]

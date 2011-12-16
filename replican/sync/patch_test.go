@@ -89,10 +89,10 @@ func DoTestPatchIdentity(t *testing.T, mkrepo repoMaker) {
 	defer srcRepo.Close()
 	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	assert.T(t, err == nil)
-	
-	assert.Equal(t, "1b1979b8746948cedc81488e92d1ad715e38bbfc", 
+
+	assert.Equal(t, "1b1979b8746948cedc81488e92d1ad715e38bbfc",
 		srcStore.Repo().Root().(fs.Dir).Info().Strong)
-	
+
 	dstpath := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(dstpath)
 	dstRepo := mkrepo(t)
@@ -100,9 +100,9 @@ func DoTestPatchIdentity(t *testing.T, mkrepo repoMaker) {
 	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	assert.T(t, err == nil)
 
-	assert.Equal(t, "1b1979b8746948cedc81488e92d1ad715e38bbfc", 
+	assert.Equal(t, "1b1979b8746948cedc81488e92d1ad715e38bbfc",
 		dstStore.Repo().Root().(fs.Dir).Info().Strong)
-	
+
 	patchPlan := NewPatchPlan(srcStore, dstStore)
 	//	printPlan(patchPlan)
 
@@ -742,21 +742,21 @@ func DoTestPatchRenameScope(t *testing.T, mkrepo repoMaker) {
 		// 
 		// If blop matches, it will get renamed to bar and the trees will 
 		// become identical. However if baz matches, blop will be left in place.
-		
+
 		srcDir := fs.IndexDir(srcpath, fs.NewMemRepo(), errorChan)
 		dstDir := fs.IndexDir(dstpath, fs.NewMemRepo(), errorChan)
-		
-		for _, path := range []string{ "foo/bar", "foo/baz" } {
+
+		for _, path := range []string{"foo/bar", "foo/baz"} {
 			srcNode, has := fs.Lookup(srcDir, path)
 			assert.T(t, has)
 			dstNode, has := fs.Lookup(dstDir, path)
 			assert.T(t, has)
-			
-			assert.Equal(t, 
+
+			assert.Equal(t,
 				srcNode.(fs.File).Info().Strong,
 				dstNode.(fs.File).Info().Strong)
 		}
-		
+
 		close(errorChan)
 	}()
 	for err := range errorChan {

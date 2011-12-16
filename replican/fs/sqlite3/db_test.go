@@ -1,16 +1,16 @@
-package sqlite3	
+package sqlite3
 
 import (
-//	"fmt"
+	//	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"testing"
-	
+
 	"github.com/cmars/replican-sync/replican/fs"
 	"github.com/cmars/replican-sync/replican/treegen"
-	
+
 	"github.com/bmizerany/assert"
 )
 
@@ -27,7 +27,7 @@ func TestDbRepo(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	defer os.Remove(dbpath)
 	defer dbrepo.Close()
-	
+
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
 		tg.D("bar",
@@ -53,14 +53,14 @@ func TestDbRepo(t *testing.T) {
 
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
-	
+
 	foo := fs.IndexDir(filepath.Join(path, "foo"), dbrepo, nil)
-	
+
 	dbmemrepo, err := NewDbRepo(":memory:")
 	assert.T(t, err == nil)
-	
+
 	memfoo := fs.IndexDir(filepath.Join(path, "foo"), dbmemrepo, nil)
-	
+
 	assert.Equal(t, foo.Info().Strong, memfoo.Info().Strong)
 }
 
@@ -69,10 +69,9 @@ func TestRootWorks(t *testing.T) {
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
-	
+
 	dbrepo, err := NewDbRepo(":memory:")
 	assert.T(t, err == nil)
-	
+
 	fs.IndexDir(filepath.Join(path, "foo"), dbrepo, nil)
 }
-

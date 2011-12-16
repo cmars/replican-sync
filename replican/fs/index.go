@@ -128,7 +128,7 @@ func IndexDir(path string, repo NodeRepo, errors chan<- os.Error) Dir {
 	if visitor.root != nil {
 		visitor.root.UpdateStrong()
 	}
-	
+
 	return visitor.root
 }
 

@@ -5,7 +5,7 @@ import (
 	"github.com/cmars/replican-sync/replican/fs/sqlite3"
 	"io/ioutil"
 	"testing"
-	
+
 	"github.com/bmizerany/assert"
 )
 

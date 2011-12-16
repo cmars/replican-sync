@@ -39,7 +39,7 @@ func Match(src string, dst string) (match *FileMatch, err os.Error) {
 }
 
 func MatchFile(srcFile fs.File, dst string) (match *FileMatch, err os.Error) {
-	match = &FileMatch{ SrcSize: srcFile.Info().Size }
+	match = &FileMatch{SrcSize: srcFile.Info().Size}
 	var dstOffset int64
 
 	dstF, err := os.Open(dst)

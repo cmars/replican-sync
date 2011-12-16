@@ -20,7 +20,7 @@ type NodeRepo interface {
 	AddFile(dir Dir, fileInfo *FileInfo, blocksInfo []*BlockInfo) File
 
 	AddDir(dir Dir, subdirInfo *DirInfo) Dir
-	
+
 	Close()
 }
 

@@ -152,9 +152,9 @@ func (dirs *Dirs) Swap(i, j int) {
 // Calculate the strong checksum of a directory.
 func CalcStrong(dir Dir) string {
 	var sha1 = sha1.New()
-//	s := reprDir(dir)
-//	fmt.Printf("%s\n", s)
-//	sha1.Write(s)
+	//	s := reprDir(dir)
+	//	fmt.Printf("%s\n", s)
+	//	sha1.Write(s)
 	sha1.Write(reprDir(dir))
 	return toHexString(sha1)
 }
