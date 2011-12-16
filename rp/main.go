@@ -27,6 +27,21 @@ func main() {
 	srcpath := files[0]
 	dstpath := files[1]
 
+	srcinfo, err := os.Stat(srcpath)
+	if err != nil {
+		fmt.Printf("Cannot read <src> %s: %s\n", srcpath, err)
+		os.Exit(1)
+	}
+
+	dstinfo, err := os.Stat(dstpath)
+	if err == os.EEXIST && srcinfo.IsDirectory() {
+		os.MkdirAll(dstpath, 0755)
+	} else if err == nil && srcinfo.IsDirectory() != dstinfo.IsDirectory() {
+		fmt.Print("Cannot sync %s to %s: one of these things is not like the other",
+			srcinfo, dstinfo)
+		os.Exit(1)
+	}
+
 	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
 	if err != nil {
 		die(fmt.Sprintf("Failed to read source %s", srcpath), err)

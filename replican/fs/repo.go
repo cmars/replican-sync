@@ -22,6 +22,8 @@ type NodeRepo interface {
 	AddDir(dir Dir, subdirInfo *DirInfo) Dir
 
 	Close()
+
+	IndexFilter() IndexFilter
 }
 
 type memBlock struct {
@@ -198,4 +200,8 @@ func (repo *MemRepo) AddDir(dir Dir, info *DirInfo) Dir {
 }
 
 func (repo *MemRepo) Close() {
+}
+
+func (repo *MemRepo) IndexFilter() IndexFilter {
+	return AlwaysMatch
 }

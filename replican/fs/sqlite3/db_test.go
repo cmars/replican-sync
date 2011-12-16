@@ -54,12 +54,14 @@ func TestDbRepo(t *testing.T) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := fs.IndexDir(filepath.Join(path, "foo"), dbrepo, nil)
+	foo, errors := fs.IndexDir(filepath.Join(path, "foo"), dbrepo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	dbmemrepo, err := NewDbRepo(":memory:")
 	assert.T(t, err == nil)
 
-	memfoo := fs.IndexDir(filepath.Join(path, "foo"), dbmemrepo, nil)
+	memfoo, errors := fs.IndexDir(filepath.Join(path, "foo"), dbmemrepo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	assert.Equal(t, foo.Info().Strong, memfoo.Info().Strong)
 }
@@ -73,5 +75,6 @@ func TestRootWorks(t *testing.T) {
 	dbrepo, err := NewDbRepo(":memory:")
 	assert.T(t, err == nil)
 
-	fs.IndexDir(filepath.Join(path, "foo"), dbrepo, nil)
+	_, errors := fs.IndexDir(filepath.Join(path, "foo"), dbrepo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 }

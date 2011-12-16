@@ -12,8 +12,9 @@ import (
 )
 
 func DoTestDirIndex(t *testing.T, repo fs.NodeRepo) {
-	dir := fs.IndexDir("testroot/", repo, nil)
+	dir, errors := fs.IndexDir("../../testroot", repo)
 	assert.T(t, dir != nil)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	assert.Equal(t, 2, len(dir.SubDirs()))
 	assert.Equal(t, 4, len(dir.Files()))
@@ -31,8 +32,9 @@ func DoTestDirIndex(t *testing.T, repo fs.NodeRepo) {
 }
 
 func DoTestVisitDirsOnly(t *testing.T, repo fs.NodeRepo) {
-	dir := fs.IndexDir("../../testroot/", repo, nil)
+	dir, errors := fs.IndexDir("../../testroot/", repo)
 	assert.T(t, dir != nil)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	collect := []fs.Dir{}
 	visited := []fs.Node{}
@@ -66,8 +68,9 @@ func DoTestVisitDirsOnly(t *testing.T, repo fs.NodeRepo) {
 }
 
 func DoTestVisitBlocks(t *testing.T, repo fs.NodeRepo) {
-	dir := fs.IndexDir("../../testroot/", repo, nil)
+	dir, errors := fs.IndexDir("../../testroot/", repo)
 	assert.T(t, dir != nil)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	collect := []fs.Block{}
 
@@ -97,7 +100,8 @@ func DoTestNodeRelPath(t *testing.T, repo fs.NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := fs.IndexDir(path, repo, nil)
+	dir, errors := fs.IndexDir(path, repo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	assert.Equal(t, "", fs.RelPath(dir))
 	assert.Equal(t, "foo", fs.RelPath(dir.SubDirs()[0]))
@@ -163,7 +167,8 @@ func DoTestDirResolve(t *testing.T, repo fs.NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := fs.IndexDir(filepath.Join(path, "foo"), repo, nil)
+	foo, errors := fs.IndexDir(filepath.Join(path, "foo"), repo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	var node fs.FsNode
 	var found bool
@@ -196,7 +201,8 @@ func DoTestDirDescent(t *testing.T, repo fs.NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	dir := fs.IndexDir(path, repo, nil)
+	dir, errors := fs.IndexDir(path, repo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
 	for _, fpath := range []string{
 		filepath.Join("foo", "baobab"),
@@ -241,7 +247,9 @@ func DoTestParentRefs(t *testing.T, repo fs.NodeRepo) {
 	path := treegen.TestTree(t, treeSpec)
 	defer os.RemoveAll(path)
 
-	foo := fs.IndexDir(filepath.Join(path, "foo"), repo, nil)
+	foo, errors := fs.IndexDir(filepath.Join(path, "foo"), repo)
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+
 	rootCount := 0
 	fs.Walk(foo, func(node fs.Node) bool {
 		switch node.(type) {

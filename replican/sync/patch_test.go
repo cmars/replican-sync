@@ -219,16 +219,11 @@ func DoTestPatchFileAppend(t *testing.T, mkrepo repoMaker) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 
-	errorChan := make(chan os.Error)
-	go func() {
-		srcRoot := fs.IndexDir(srcpath, fs.NewMemRepo(), errorChan)
-		dstRoot := fs.IndexDir(dstpath, fs.NewMemRepo(), errorChan)
-		assert.Equal(t, srcRoot.Info().Strong, dstRoot.Info().Strong)
-		close(errorChan)
-	}()
-	for err := range errorChan {
-		assert.Tf(t, err == nil, "%v", err)
-	}
+	srcRoot, errors := fs.IndexDir(srcpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	dstRoot, errors := fs.IndexDir(dstpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	assert.Equal(t, srcRoot.Info().Strong, dstRoot.Info().Strong)
 }
 
 // Test the patch planner on a case where the source file is a shorter,
@@ -294,16 +289,11 @@ func DoTestPatchFileTruncate(t *testing.T, mkrepo repoMaker) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 
-	errorChan := make(chan os.Error)
-	go func() {
-		srcRoot := fs.IndexDir(srcpath, fs.NewMemRepo(), errorChan)
-		dstRoot := fs.IndexDir(dstpath, fs.NewMemRepo(), errorChan)
-		assert.Equal(t, srcRoot.Info().Strong, dstRoot.Info().Strong)
-		close(errorChan)
-	}()
-	for err := range errorChan {
-		assert.Tf(t, err == nil, "%v", err)
-	}
+	srcRoot, errors := fs.IndexDir(srcpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	dstRoot, errors := fs.IndexDir(dstpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	assert.Equal(t, srcRoot.Info().Strong, dstRoot.Info().Strong)
 }
 
 // Test the patch planner's ability to track adding a bunch of new files.
@@ -683,16 +673,11 @@ func DoTestPatchWeakCollision(t *testing.T, mkrepo repoMaker) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 
-	errorChan := make(chan os.Error)
-	go func() {
-		srcDir := fs.IndexDir(srcpath, fs.NewMemRepo(), errorChan)
-		dstDir := fs.IndexDir(dstpath, fs.NewMemRepo(), errorChan)
-		assert.Equal(t, srcDir.Info().Strong, dstDir.Info().Strong)
-		close(errorChan)
-	}()
-	for err := range errorChan {
-		assert.Tf(t, err == nil, "%v", err)
-	}
+	srcDir, errors := fs.IndexDir(srcpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	dstDir, errors := fs.IndexDir(dstpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	assert.Equal(t, srcDir.Info().Strong, dstDir.Info().Strong)
 }
 
 func TestPatchRenameScope(t *testing.T) {
@@ -734,33 +719,27 @@ func DoTestPatchRenameScope(t *testing.T, mkrepo repoMaker) {
 	failedCmd, err := patchPlan.Exec()
 	assert.Tf(t, failedCmd == nil && err == nil, "%v: %v", failedCmd, err)
 
-	errorChan := make(chan os.Error)
-	go func() {
-		// The actual content of dst after the patch depends on 
-		// which file the repo chooses when matching foo/bar 
-		// to baz or blop in dst.
-		// 
-		// If blop matches, it will get renamed to bar and the trees will 
-		// become identical. However if baz matches, blop will be left in place.
+	// The actual content of dst after the patch depends on 
+	// which file the repo chooses when matching foo/bar 
+	// to baz or blop in dst.
+	// 
+	// If blop matches, it will get renamed to bar and the trees will 
+	// become identical. However if baz matches, blop will be left in place.
 
-		srcDir := fs.IndexDir(srcpath, fs.NewMemRepo(), errorChan)
-		dstDir := fs.IndexDir(dstpath, fs.NewMemRepo(), errorChan)
+	srcDir, errors := fs.IndexDir(srcpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
+	dstDir, errors := fs.IndexDir(dstpath, fs.NewMemRepo())
+	assert.Equalf(t, 0, len(errors), "%v", errors)
 
-		for _, path := range []string{"foo/bar", "foo/baz"} {
-			srcNode, has := fs.Lookup(srcDir, path)
-			assert.T(t, has)
-			dstNode, has := fs.Lookup(dstDir, path)
-			assert.T(t, has)
+	for _, path := range []string{"foo/bar", "foo/baz"} {
+		srcNode, has := fs.Lookup(srcDir, path)
+		assert.T(t, has)
+		dstNode, has := fs.Lookup(dstDir, path)
+		assert.T(t, has)
 
-			assert.Equal(t,
-				srcNode.(fs.File).Info().Strong,
-				dstNode.(fs.File).Info().Strong)
-		}
-
-		close(errorChan)
-	}()
-	for err := range errorChan {
-		assert.Tf(t, err == nil, "%v", err)
+		assert.Equal(t,
+			srcNode.(fs.File).Info().Strong,
+			dstNode.(fs.File).Info().Strong)
 	}
 }
 

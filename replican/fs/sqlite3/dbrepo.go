@@ -3,6 +3,7 @@ package sqlite3
 import (
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/cmars/replican-sync/replican/fs"
 	"github.com/kuroneko/gosqlite3"
@@ -11,6 +12,7 @@ import (
 type DbRepo struct {
 	RootPath string
 	db       *sqlite3.Database
+	dbpath   string
 }
 
 type dbBlock struct {
@@ -475,7 +477,7 @@ func NewDbRepo(dbpath string) (*DbRepo, os.Error) {
 		return nil, err
 	}
 
-	dbRepo := &DbRepo{db: db}
+	dbRepo := &DbRepo{db: db, dbpath: dbpath}
 	err = dbRepo.createTables()
 	return dbRepo, err
 }
@@ -518,4 +520,10 @@ func (dbRepo *DbRepo) createTables() os.Error {
 		}
 	}
 	return nil
+}
+
+func (dbRepo *DbRepo) IndexFilter() fs.IndexFilter {
+	return func(path string, f *os.FileInfo) bool {
+		return filepath.Clean(path) != dbRepo.dbpath
+	}
 }

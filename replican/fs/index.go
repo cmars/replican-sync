@@ -41,95 +41,145 @@ func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
 	weak.b -= int(removedByte)*BLOCKSIZE - weak.a
 }
 
-// Visitor used to traverse a directory with filepath.Walk in IndexDir
-type indexVisitor struct {
-	root   Dir
-	repo   NodeRepo
-	dirMap map[string]Dir
-	errors chan<- os.Error
+type IndexFilter func(path string, f *os.FileInfo) bool
+
+func AlwaysMatch(path string, f *os.FileInfo) bool { return true }
+
+func AllMatch(filters ...IndexFilter) IndexFilter {
+	return func(path string, f *os.FileInfo) bool {
+		for _, fn := range filters {
+			if !fn(path, f) {
+				return false
+			}
+		}
+		return true
+	}
 }
 
-// Initialize the IndexDir visitor
-func newVisitor(path string, repo NodeRepo) *indexVisitor {
-	path = filepath.Clean(path)
-	path = strings.TrimRight(path, "/\\")
+func AnyMatch(filters ...IndexFilter) IndexFilter {
+	return func(path string, f *os.FileInfo) bool {
+		for _, fn := range filters {
+			if fn(path, f) {
+				return true
+			}
+		}
+		return false
+	}
+}
 
-	visitor := &indexVisitor{
-		errors: make(chan os.Error),
-		dirMap: make(map[string]Dir),
-		repo:   repo}
+type Indexer struct {
+	Path   string
+	Repo   NodeRepo
+	Filter IndexFilter
+	Errors chan<- os.Error
 
-	if rootInfo, err := os.Stat(path); err == nil {
-		visitor.VisitDir(path, rootInfo)
-		visitor.root = visitor.dirMap[path]
+	root   Dir
+	dirMap map[string]Dir
+}
+
+// Initialize the Indexer for filepath.Walk visit
+func (indexer *Indexer) initWalk() {
+	indexer.Path = filepath.Clean(indexer.Path)
+	indexer.Path = strings.TrimRight(indexer.Path, "/\\")
+
+	if indexer.Filter == nil {
+		indexer.Filter = AlwaysMatch
 	}
 
-	return visitor
+	indexer.root = nil
+	indexer.dirMap = make(map[string]Dir)
+
+	if rootInfo, err := os.Stat(indexer.Path); err == nil {
+		indexer.VisitDir(indexer.Path, rootInfo)
+		indexer.root = indexer.dirMap[indexer.Path]
+	}
 }
 
-// IndexDir visitor callback for directories
-func (visitor *indexVisitor) VisitDir(path string, f *os.FileInfo) bool {
+// Indexer callback for directories
+func (indexer *Indexer) VisitDir(path string, f *os.FileInfo) bool {
+	if !indexer.Filter(path, f) {
+		return false
+	}
+
 	path = filepath.Clean(path)
-	dir, hasDir := visitor.dirMap[path]
+	dir, hasDir := indexer.dirMap[path]
 	if !hasDir {
 		dirname, basename := filepath.Split(path)
 		dirname = strings.TrimRight(dirname, "/\\") // remove the trailing slash
 
-		parentDir, hasParent := visitor.dirMap[dirname]
+		parentDir, hasParent := indexer.dirMap[dirname]
 		info := &DirInfo{
 			Name: basename,
 			Mode: f.Mode}
 		if hasParent {
 			info.Parent = parentDir.Info().Strong
-			dir = visitor.repo.AddDir(parentDir, info)
+			dir = indexer.Repo.AddDir(parentDir, info)
 		} else {
 			info.Name = ""
-			dir = visitor.repo.AddDir(nil, info)
+			dir = indexer.Repo.AddDir(nil, info)
 		}
-		visitor.dirMap[path] = dir
+		indexer.dirMap[path] = dir
 	}
 
 	return true
 }
 
 // IndexDir visitor callback for files
-func (visitor *indexVisitor) VisitFile(path string, f *os.FileInfo) {
+func (indexer *Indexer) VisitFile(path string, f *os.FileInfo) {
+	if !indexer.Filter(path, f) {
+		return
+	}
+
 	fileInfo, blocksInfo, err := IndexFile(path)
 	if err == nil {
 		dirpath, _ := filepath.Split(path)
 		dirpath = filepath.Clean(dirpath)
 		if dirinfo, err := os.Stat(dirpath); err == nil {
-			visitor.VisitDir(dirpath, dirinfo)
+			indexer.VisitDir(dirpath, dirinfo)
 
-			if fileParent, hasParent := visitor.dirMap[dirpath]; hasParent {
-				visitor.repo.AddFile(fileParent, fileInfo, blocksInfo)
+			if fileParent, hasParent := indexer.dirMap[dirpath]; hasParent {
+				indexer.Repo.AddFile(fileParent, fileInfo, blocksInfo)
 				return
-			} else if visitor.errors != nil {
-				visitor.errors <- os.NewError("cannot locate parent directory")
+			} else if indexer.Errors != nil {
+				indexer.Errors <- os.NewError("cannot locate parent directory")
 			}
 		}
-	} else if visitor.errors != nil {
-		visitor.errors <- err
+	} else if indexer.Errors != nil {
+		indexer.Errors <- err
 	}
 }
 
-// Build a hierarchical tree model representing a directory's contents
-func IndexDir(path string, repo NodeRepo, errors chan<- os.Error) Dir {
+func IndexDir(path string, repo NodeRepo) (Dir, []os.Error) {
+	errors := []os.Error{}
+	dirChan := make(chan Dir, 1)
+	errorChan := make(chan os.Error, 1)
+	indexer := &Indexer{Path: path, Repo: repo, Errors: errorChan}
+	go func() {
+		dirChan <- indexer.Index()
+		close(errorChan)
+	}()
+	for error := range errorChan {
+		errors = append(errors, error)
+	}
+	dir := <-dirChan
+	return dir, errors
+}
+
+func (indexer *Indexer) Index() Dir {
 	control := make(chan bool)
-	visitor := newVisitor(path, repo)
-	visitor.errors = errors
+	indexer.initWalk()
 
 	go func() {
-		filepath.Walk(path, visitor, errors)
+		filepath.Walk(indexer.Path, indexer, indexer.Errors)
 		close(control)
 	}()
 	<-control
 
-	if visitor.root != nil {
-		visitor.root.UpdateStrong()
+	if indexer.root != nil {
+		indexer.root.UpdateStrong()
 	}
 
-	return visitor.root
+	return indexer.root
 }
 
 // Build a hierarchical tree model representing a file's contents

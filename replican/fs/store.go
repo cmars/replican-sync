@@ -75,7 +75,11 @@ func NewLocalStore(rootPath string, repo NodeRepo) (local LocalStore, err os.Err
 }
 
 func (store *LocalDirStore) reindex() (err os.Error) {
-	store.dir = IndexDir(store.RootPath(), store.repo, nil)
+	indexer := &Indexer{
+		Path:   store.RootPath(),
+		Repo:   store.repo,
+		Filter: store.repo.IndexFilter()}
+	store.dir = indexer.Index()
 	if store.dir == nil {
 		return os.NewError(fmt.Sprintf("Failed to reindex root: %s", store.RootPath()))
 	}
