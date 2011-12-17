@@ -1,11 +1,14 @@
 package main
 
 import (
-	"github.com/cmars/replican-sync/replican/fs"
-	"github.com/cmars/replican-sync/replican/sync"
-	"os"
 	"fmt"
+	"io/ioutil"
+	"os"
 
+	"github.com/cmars/replican-sync/replican/fs"
+	"github.com/cmars/replican-sync/replican/fs/sqlite3"
+	"github.com/cmars/replican-sync/replican/sync"
+	
 	"optarg.googlecode.com/hg/optarg"
 )
 
@@ -20,8 +23,7 @@ func main() {
 	}
 
 	if len(files) < 2 {
-		fmt.Printf("Usage: %s <src> <dst>\n", os.Args[0])
-		os.Exit(1)
+		die(fmt.Sprintf("Usage: %s <src> <dst>", os.Args[0]), nil)
 	}
 
 	srcpath := files[0]
@@ -29,25 +31,45 @@ func main() {
 
 	srcinfo, err := os.Stat(srcpath)
 	if err != nil {
-		fmt.Printf("Cannot read <src> %s: %s\n", srcpath, err)
-		os.Exit(1)
+		die(fmt.Sprintf("Cannot read <src> %s:", srcpath), err)
 	}
 
 	dstinfo, err := os.Stat(dstpath)
 	if err == os.EEXIST && srcinfo.IsDirectory() {
 		os.MkdirAll(dstpath, 0755)
 	} else if err == nil && srcinfo.IsDirectory() != dstinfo.IsDirectory() {
-		fmt.Print("Cannot sync %s to %s: one of these things is not like the other",
-			srcinfo, dstinfo)
-		os.Exit(1)
+		die(fmt.Sprintf(
+			"Cannot sync %s to %s: one of these things is not like the other",
+			srcinfo, dstinfo), nil)
 	}
 
-	srcStore, err := fs.NewLocalStore(srcpath, fs.NewMemRepo())
+	srcDbF, err := ioutil.TempFile("", "srcdb")
+	if err != nil {
+		die("Failed to create source index database", err)
+	}
+	srcDbF.Close()
+	defer os.RemoveAll(srcDbF.Name())
+	srcRepo, err := sqlite3.NewDbRepo(srcDbF.Name())
+	if err != nil {
+		die("Failed to create source index database", err)
+	}
+	
+	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	if err != nil {
 		die(fmt.Sprintf("Failed to read source %s", srcpath), err)
 	}
 
-	dstStore, err := fs.NewLocalStore(dstpath, fs.NewMemRepo())
+	dstDbF, err := ioutil.TempFile("", "dstdb")
+	if err != nil {
+		die("Failed to create destination index database", err)
+	}
+	defer os.RemoveAll(dstDbF.Name())
+	dstRepo, err := sqlite3.NewDbRepo(dstDbF.Name())
+	if err != nil {
+		die("Failed to create source index database", err)
+	}
+	
+	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	if err != nil {
 		die(fmt.Sprintf("Failed to read destination %s", srcpath), err)
 	}
@@ -67,6 +89,10 @@ func main() {
 }
 
 func die(message string, err os.Error) {
-	fmt.Fprintf(os.Stderr, "%s: %v\n", message, err)
+	if err == nil {
+		fmt.Fprint(os.Stderr, message)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", message, err)
+	}
 	os.Exit(1)
 }
