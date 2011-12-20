@@ -8,7 +8,7 @@ import (
 	"github.com/cmars/replican-sync/replican/fs"
 	"github.com/cmars/replican-sync/replican/fs/sqlite3"
 	"github.com/cmars/replican-sync/replican/sync"
-	
+
 	"optarg.googlecode.com/hg/optarg"
 )
 
@@ -53,7 +53,7 @@ func main() {
 	if err != nil {
 		die("Failed to create source index database", err)
 	}
-	
+
 	srcStore, err := fs.NewLocalStore(srcpath, srcRepo)
 	if err != nil {
 		die(fmt.Sprintf("Failed to read source %s", srcpath), err)
@@ -68,7 +68,7 @@ func main() {
 	if err != nil {
 		die("Failed to create source index database", err)
 	}
-	
+
 	dstStore, err := fs.NewLocalStore(dstpath, dstRepo)
 	if err != nil {
 		die(fmt.Sprintf("Failed to read destination %s", srcpath), err)

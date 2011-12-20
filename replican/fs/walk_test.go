@@ -1,13 +1,13 @@
 package fs
 
 import (
-//	"log"
+	//	"log"
 	"os"
 	"strings"
 	"testing"
-	
+
 	"github.com/cmars/replican-sync/replican/treegen"
-	
+
 	"github.com/bmizerany/assert"
 )
 
@@ -36,18 +36,18 @@ func TestPostOrder(t *testing.T) {
 			tg.D("I",
 				tg.F("H", tg.B(4, 100)))))
 	root := treegen.TestTree(t, treeSpec)
-	visitor := &postVisitor{ order: []string{} }
+	visitor := &postVisitor{order: []string{}}
 	PostOrderWalk(root, visitor, nil)
-	
+
 	/*
-	for _, s := range visitor.order {
-		log.Printf("%v", s)
-	}
+		for _, s := range visitor.order {
+			log.Printf("%v", s)
+		}
 	*/
-	
-	expect := []string{ "/C", "/E", "/D", "/A", "/B", "/H", "/I", "/G", "/F" }
+
+	expect := []string{"/C", "/E", "/D", "/A", "/B", "/H", "/I", "/G", "/F"}
 	for i := 0; i < len(expect); i++ {
-		assert.Tf(t, strings.HasSuffix(visitor.order[i], expect[i]), 
+		assert.Tf(t, strings.HasSuffix(visitor.order[i], expect[i]),
 			"%v did not have expected suffix %s", visitor.order[i], expect[i])
 	}
 }
@@ -56,7 +56,7 @@ func TestPostOrder3(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("F",
 		tg.D("B0",
-			tg.D("A0", 
+			tg.D("A0",
 				tg.F("C0", tg.B(100, 100)),
 				tg.F("E0", tg.B(101, 100))),
 			tg.F("D0", tg.B(102, 100))),
@@ -76,25 +76,23 @@ func TestPostOrder3(t *testing.T) {
 			tg.D("I",
 				tg.F("H", tg.B(4, 100)))))
 	root := treegen.TestTree(t, treeSpec)
-	visitor := &postVisitor{ order: []string{} }
+	visitor := &postVisitor{order: []string{}}
 	PostOrderWalk(root, visitor, nil)
-	
+
 	/*
-	for _, s := range visitor.order {
-		log.Printf("%v", s)
-	}
+		for _, s := range visitor.order {
+			log.Printf("%v", s)
+		}
 	*/
-	
-	expect := []string{ 
+
+	expect := []string{
 		"/C0", "/E0", "/A0", "/D0", "/B0",
 		"/C2", "/D2", "/C", "/E", "/D", "/A", "/A2", "/B1",
-		"/C3", "/E3", "/D3", "/A3", "/B2", 
-		"/H", "/I", "/G", 
-		"/F" }
+		"/C3", "/E3", "/D3", "/A3", "/B2",
+		"/H", "/I", "/G",
+		"/F"}
 	for i := 0; i < len(expect); i++ {
-		assert.Tf(t, strings.HasSuffix(visitor.order[i], expect[i]), 
+		assert.Tf(t, strings.HasSuffix(visitor.order[i], expect[i]),
 			"%v did not have expected suffix %s", visitor.order[i], expect[i])
 	}
 }
-
-

@@ -2,7 +2,7 @@ package fs
 
 import (
 	"io"
-//	"log"
+	//	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -91,20 +91,20 @@ func (sfi *sortFileInfo) Swap(i, j int) {
 func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error) {
 	stack := []*postNode{}
 	var cur *postNode
-	
+
 	if info, err := os.Stat(path); err == nil {
-		cur = &postNode{ path: path, info: info, seen: false }
+		cur = &postNode{path: path, info: info, seen: false}
 		stack = append(stack, cur)
 	} else if errors != nil {
 		errors <- err
 		return
 	}
-	
+
 	for l := len(stack); l > 0; l = len(stack) {
 		cur := stack[l-1]
-		
+
 		if cur.seen {
-			stack = stack[0:l-1]
+			stack = stack[0 : l-1]
 			if cur.info.IsDirectory() {
 				visitor.VisitDir(cur.path, cur.info)
 			} else {
@@ -112,18 +112,18 @@ func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error
 			}
 			continue
 		}
-		
+
 		if cur.info.IsDirectory() {
 			if f, err := os.Open(cur.path); err == nil {
 				if infos, err := f.Readdir(0); err == nil {
-					sfi := &sortFileInfo{ infos: &infos }
+					sfi := &sortFileInfo{infos: &infos}
 					sort.Sort(sfi)
 					for _, info := range *sfi.infos {
-//						log.Printf("push %s", info.Name)
-						stack = append(stack, &postNode{ 
+						//						log.Printf("push %s", info.Name)
+						stack = append(stack, &postNode{
 							path: filepath.Join(cur.path, info.Name),
 							info: &info,
-							seen: false })
+							seen: false})
 					}
 				} else if errors != nil {
 					errors <- err
@@ -131,7 +131,7 @@ func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error
 			}
 			cur.seen = true
 		} else {
-			stack = stack[0:l-1]
+			stack = stack[0 : l-1]
 			visitor.VisitFile(cur.path, cur.info)
 		}
 	}
