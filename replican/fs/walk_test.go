@@ -11,19 +11,6 @@ import (
 	"github.com/bmizerany/assert"
 )
 
-type postVisitor struct {
-	order []string
-}
-
-func (pv *postVisitor) VisitDir(path string, f *os.FileInfo) bool {
-	pv.order = append(pv.order, path)
-	return true
-}
-
-func (pv *postVisitor) VisitFile(path string, f *os.FileInfo) {
-	pv.order = append(pv.order, path)
-}
-
 func TestPostOrder(t *testing.T) {
 	tg := treegen.New()
 	treeSpec := tg.D("F",
@@ -36,8 +23,11 @@ func TestPostOrder(t *testing.T) {
 			tg.D("I",
 				tg.F("H", tg.B(4, 100)))))
 	root := treegen.TestTree(t, treeSpec)
-	visitor := &postVisitor{order: []string{}}
-	PostOrderWalk(root, visitor, nil)
+	order := []string{}
+	PostOrderWalk(root, func(path string, info os.FileInfo, err error) error {
+		order = append(order, path)
+		return nil
+	}, nil)
 
 	/*
 		for _, s := range visitor.order {
@@ -47,8 +37,8 @@ func TestPostOrder(t *testing.T) {
 
 	expect := []string{"/C", "/E", "/D", "/A", "/B", "/H", "/I", "/G", "/F"}
 	for i := 0; i < len(expect); i++ {
-		assert.Tf(t, strings.HasSuffix(visitor.order[i], expect[i]),
-			"%v did not have expected suffix %s", visitor.order[i], expect[i])
+		assert.Tf(t, strings.HasSuffix(order[i], expect[i]),
+			"%v did not have expected suffix %s", order[i], expect[i])
 	}
 }
 
@@ -76,8 +66,11 @@ func TestPostOrder3(t *testing.T) {
 			tg.D("I",
 				tg.F("H", tg.B(4, 100)))))
 	root := treegen.TestTree(t, treeSpec)
-	visitor := &postVisitor{order: []string{}}
-	PostOrderWalk(root, visitor, nil)
+	order := []string{}
+	PostOrderWalk(root, func(path string, info os.FileInfo, err error) error {
+		order = append(order, path)
+		return nil
+	}, nil)
 
 	/*
 		for _, s := range visitor.order {
@@ -92,7 +85,7 @@ func TestPostOrder3(t *testing.T) {
 		"/H", "/I", "/G",
 		"/F"}
 	for i := 0; i < len(expect); i++ {
-		assert.Tf(t, strings.HasSuffix(visitor.order[i], expect[i]),
-			"%v did not have expected suffix %s", visitor.order[i], expect[i])
+		assert.Tf(t, strings.HasSuffix(order[i], expect[i]),
+			"%v did not have expected suffix %s", order[i], expect[i])
 	}
 }

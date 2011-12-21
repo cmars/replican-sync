@@ -16,9 +16,9 @@ func TestSimple1(t *testing.T) {
 	defer os.RemoveAll(tempdir)
 
 	fileInfo, _ := os.Stat(filepath.Join(tempdir, "foo"))
-	assert.Tf(t, fileInfo.IsDirectory(), "no foo")
+	assert.Tf(t, fileInfo.IsDir(), "no foo")
 
 	fileInfo, _ = os.Stat(filepath.Join(tempdir, "foo", "bar"))
-	assert.Tf(t, fileInfo.IsRegular(), "no bar")
-	assert.Equal(t, int64(65537), fileInfo.Size)
+	assert.Tf(t, !fileInfo.IsDir(), "no bar")
+	assert.Equal(t, int64(65537), fileInfo.Size())
 }

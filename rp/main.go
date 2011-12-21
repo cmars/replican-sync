@@ -35,9 +35,9 @@ func main() {
 	}
 
 	dstinfo, err := os.Stat(dstpath)
-	if err == os.EEXIST && srcinfo.IsDirectory() {
+	if err == os.EEXIST && srcinfo.IsDir() {
 		os.MkdirAll(dstpath, 0755)
-	} else if err == nil && srcinfo.IsDirectory() != dstinfo.IsDirectory() {
+	} else if err == nil && srcinfo.IsDir() != dstinfo.IsDir() {
 		die(fmt.Sprintf(
 			"Cannot sync %s to %s: one of these things is not like the other",
 			srcinfo, dstinfo), nil)
@@ -88,7 +88,7 @@ func main() {
 	os.Exit(0)
 }
 
-func die(message string, err os.Error) {
+func die(message string, err error) {
 	if err == nil {
 		fmt.Fprint(os.Stderr, message)
 	} else {

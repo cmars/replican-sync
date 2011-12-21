@@ -26,17 +26,17 @@ func TestMatchIdentity(t *testing.T) {
 
 	fileInfo, err := os.Stat(srcPath)
 	if fileInfo == nil {
-		t.Fatalf("Cannot stat file %s: ", err.String())
+		t.Fatalf("Cannot stat file %v: ", err)
 	} else {
-		nExpectMatches := fileInfo.Size / int64(fs.BLOCKSIZE)
-		if fileInfo.Size%int64(fs.BLOCKSIZE) > 0 {
+		nExpectMatches := fileInfo.Size() / int64(fs.BLOCKSIZE)
+		if fileInfo.Size()%int64(fs.BLOCKSIZE) > 0 {
 			nExpectMatches++
 		}
 
 		assert.Equal(t, nExpectMatches, int64(nMatches))
 	}
 
-	lastBlockSize := fileInfo.Size - int64(match.BlockMatches[14].DstOffset)
+	lastBlockSize := fileInfo.Size() - int64(match.BlockMatches[14].DstOffset)
 	assert.Equalf(t, int64(5419), lastBlockSize,
 		"Unxpected last block size: %d", lastBlockSize)
 }

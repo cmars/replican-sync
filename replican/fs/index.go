@@ -2,6 +2,7 @@ package fs
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"hash"
 	"os"
@@ -41,12 +42,12 @@ func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
 	weak.b -= int(removedByte)*BLOCKSIZE - weak.a
 }
 
-type IndexFilter func(path string, f *os.FileInfo) bool
+type IndexFilter func(path string, f os.FileInfo) bool
 
-func AlwaysMatch(path string, f *os.FileInfo) bool { return true }
+func AlwaysMatch(path string, f os.FileInfo) bool { return true }
 
 func AllMatch(filters ...IndexFilter) IndexFilter {
-	return func(path string, f *os.FileInfo) bool {
+	return func(path string, f os.FileInfo) bool {
 		for _, fn := range filters {
 			if !fn(path, f) {
 				return false
@@ -57,7 +58,7 @@ func AllMatch(filters ...IndexFilter) IndexFilter {
 }
 
 func AnyMatch(filters ...IndexFilter) IndexFilter {
-	return func(path string, f *os.FileInfo) bool {
+	return func(path string, f os.FileInfo) bool {
 		for _, fn := range filters {
 			if fn(path, f) {
 				return true
@@ -71,7 +72,7 @@ type Indexer struct {
 	Path   string
 	Repo   NodeRepo
 	Filter IndexFilter
-	Errors chan<- os.Error
+	Errors chan<- error
 
 	root   Dir
 	dirMap map[string]Dir
@@ -96,7 +97,7 @@ func (indexer *Indexer) initWalk() {
 }
 
 // Indexer callback for directories
-func (indexer *Indexer) VisitDir(path string, f *os.FileInfo) bool {
+func (indexer *Indexer) VisitDir(path string, f os.FileInfo) bool {
 	if !indexer.Filter(path, f) {
 		return false
 	}
@@ -110,7 +111,7 @@ func (indexer *Indexer) VisitDir(path string, f *os.FileInfo) bool {
 		parentDir, hasParent := indexer.dirMap[dirname]
 		info := &DirInfo{
 			Name: basename,
-			Mode: f.Mode}
+			Mode: uint32(f.Mode())}
 		if hasParent {
 			info.Parent = parentDir.Info().Strong
 			dir = indexer.Repo.AddDir(parentDir, info)
@@ -125,7 +126,7 @@ func (indexer *Indexer) VisitDir(path string, f *os.FileInfo) bool {
 }
 
 // IndexDir visitor callback for files
-func (indexer *Indexer) VisitFile(path string, f *os.FileInfo) {
+func (indexer *Indexer) VisitFile(path string, f os.FileInfo) {
 	if !indexer.Filter(path, f) {
 		return
 	}
@@ -141,7 +142,7 @@ func (indexer *Indexer) VisitFile(path string, f *os.FileInfo) {
 				indexer.Repo.AddFile(fileParent, fileInfo, blocksInfo)
 				return
 			} else if indexer.Errors != nil {
-				indexer.Errors <- os.NewError("cannot locate parent directory")
+				indexer.Errors <- errors.New("cannot locate parent directory")
 			}
 		}
 	} else if indexer.Errors != nil {
@@ -149,10 +150,10 @@ func (indexer *Indexer) VisitFile(path string, f *os.FileInfo) {
 	}
 }
 
-func IndexDir(path string, repo NodeRepo) (Dir, []os.Error) {
-	errors := []os.Error{}
+func IndexDir(path string, repo NodeRepo) (Dir, []error) {
+	errors := []error{}
 	dirChan := make(chan Dir, 1)
-	errorChan := make(chan os.Error, 1)
+	errorChan := make(chan error, 1)
 	indexer := &Indexer{Path: path, Repo: repo, Errors: errorChan}
 	go func() {
 		dirChan <- indexer.Index()
@@ -166,14 +167,20 @@ func IndexDir(path string, repo NodeRepo) (Dir, []os.Error) {
 }
 
 func (indexer *Indexer) Index() Dir {
-	control := make(chan bool)
 	indexer.initWalk()
-
-	go func() {
-		filepath.Walk(indexer.Path, indexer, indexer.Errors)
-		close(control)
-	}()
-	<-control
+	
+	filepath.Walk(indexer.Path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if indexer.Errors != nil {
+				indexer.Errors <- err
+			}
+		} else if info.IsDir() {
+			indexer.VisitDir(path, info)
+		} else {
+			indexer.VisitFile(path, info)
+		}
+		return nil
+	})
 
 	if indexer.root != nil {
 		indexer.root.UpdateStrong()
@@ -183,15 +190,15 @@ func (indexer *Indexer) Index() Dir {
 }
 
 // Build a hierarchical tree model representing a file's contents
-func IndexFile(path string) (fileInfo *FileInfo, blocksInfo []*BlockInfo, err os.Error) {
+func IndexFile(path string) (fileInfo *FileInfo, blocksInfo []*BlockInfo, err error) {
 	var f *os.File
 	var buf [BLOCKSIZE]byte
 
 	stat, err := os.Stat(path)
 	if stat == nil {
 		return nil, nil, err
-	} else if !stat.IsRegular() {
-		return nil, nil, os.NewError(fmt.Sprintf("%s: not a regular file", path))
+	} else if !!stat.IsDir() {
+		return nil, nil, errors.New(fmt.Sprintf("%s: not a regular file", path))
 	}
 
 	f, err = os.Open(path)
@@ -203,8 +210,8 @@ func IndexFile(path string) (fileInfo *FileInfo, blocksInfo []*BlockInfo, err os
 	_, basename := filepath.Split(path)
 	fileInfo = &FileInfo{
 		Name: basename,
-		Mode: stat.Mode,
-		Size: stat.Size}
+		Mode: uint32(stat.Mode()),
+		Size: stat.Size()}
 
 	var block *BlockInfo
 	sha1 := sha1.New()
@@ -236,7 +243,7 @@ func IndexFile(path string) (fileInfo *FileInfo, blocksInfo []*BlockInfo, err os
 
 // Render a Hash as a hexadecimal string.
 func toHexString(hash hash.Hash) string {
-	return fmt.Sprintf("%x", hash.Sum())
+	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 // Strong checksum algorithm used throughout replican

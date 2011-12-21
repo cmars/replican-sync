@@ -20,7 +20,7 @@ func SplitNames(path string) []string {
 // Move src to dst.
 // Try a rename. If that fails due to different filesystems,
 // try a copy/delete instead.
-func Move(src string, dst string) (err os.Error) {
+func Move(src string, dst string) (err error) {
 	if _, err = os.Stat(dst); err == nil {
 		os.Remove(dst)
 	}
@@ -31,7 +31,7 @@ func Move(src string, dst string) (err os.Error) {
 			return err
 		}
 
-		if causeErr, isErrno := linkErr.Error.(os.Errno); isErrno && causeErr == syscall.EXDEV {
+		if causeErr, isErrno := linkErr.Err.(syscall.Errno); isErrno && causeErr == syscall.EXDEV {
 			srcF, err := os.Open(src)
 			if err != nil {
 				return err
@@ -63,7 +63,7 @@ func Move(src string, dst string) (err os.Error) {
 
 type postNode struct {
 	path string
-	info *os.FileInfo
+	info os.FileInfo
 	seen bool
 }
 
@@ -78,17 +78,17 @@ func (sfi *sortFileInfo) Len() int {
 func (sfi *sortFileInfo) Less(i, j int) bool {
 	l := (*sfi.infos)[i]
 	r := (*sfi.infos)[j]
-	if l.IsDirectory() == r.IsDirectory() {
-		return (*sfi.infos)[i].Name > (*sfi.infos)[j].Name
+	if l.IsDir() == r.IsDir() {
+		return (*sfi.infos)[i].Name() > (*sfi.infos)[j].Name()
 	}
-	return r.IsDirectory()
+	return r.IsDir()
 }
 
 func (sfi *sortFileInfo) Swap(i, j int) {
 	(*sfi.infos)[i], (*sfi.infos)[j] = (*sfi.infos)[j], (*sfi.infos)[i]
 }
 
-func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error) {
+func PostOrderWalk(path string, visitor filepath.WalkFunc, errors chan<- error) {
 	stack := []*postNode{}
 	var cur *postNode
 
@@ -105,15 +105,11 @@ func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error
 
 		if cur.seen {
 			stack = stack[0 : l-1]
-			if cur.info.IsDirectory() {
-				visitor.VisitDir(cur.path, cur.info)
-			} else {
-				visitor.VisitFile(cur.path, cur.info)
-			}
+			visitor(cur.path, cur.info, nil)
 			continue
 		}
 
-		if cur.info.IsDirectory() {
+		if cur.info.IsDir() {
 			if f, err := os.Open(cur.path); err == nil {
 				if infos, err := f.Readdir(0); err == nil {
 					sfi := &sortFileInfo{infos: &infos}
@@ -121,8 +117,8 @@ func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error
 					for _, info := range *sfi.infos {
 						//						log.Printf("push %s", info.Name)
 						stack = append(stack, &postNode{
-							path: filepath.Join(cur.path, info.Name),
-							info: &info,
+							path: filepath.Join(cur.path, info.Name()),
+							info: info,
 							seen: false})
 					}
 				} else if errors != nil {
@@ -132,7 +128,7 @@ func PostOrderWalk(path string, visitor filepath.Visitor, errors chan<- os.Error
 			cur.seen = true
 		} else {
 			stack = stack[0 : l-1]
-			visitor.VisitFile(cur.path, cur.info)
+			visitor(cur.path, cur.info, nil)
 		}
 	}
 }

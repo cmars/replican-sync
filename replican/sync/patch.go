@@ -2,13 +2,14 @@ package sync
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	//	"log"
+	"github.com/cmars/replican-sync/replican/fs"
 	"os"
 	"path/filepath"
-	"github.com/cmars/replican-sync/replican/fs"
 )
 
 type PathRef interface {
@@ -37,10 +38,10 @@ func (localPath *LocalPath) Resolve() string {
 type PatchCmd interface {
 	String() string
 
-	Exec(srcStore fs.BlockStore) os.Error
+	Exec(srcStore fs.BlockStore) error
 }
 
-func mkParentDirs(path PathRef) os.Error {
+func mkParentDirs(path PathRef) error {
 	dir, _ := filepath.Split(path.Resolve())
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -60,7 +61,7 @@ func (transfer *Transfer) String() string {
 	return fmt.Sprintf("Transfer %s to %s", transfer.From, transfer.To)
 }
 
-func (transfer *Transfer) Exec(srcStore fs.BlockStore) (err os.Error) {
+func (transfer *Transfer) Exec(srcStore fs.BlockStore) (err error) {
 	transfer.relocRefs[transfer.From.RelPath]--
 	refCount := transfer.relocRefs[transfer.From.RelPath]
 
@@ -71,11 +72,11 @@ func (transfer *Transfer) Exec(srcStore fs.BlockStore) (err os.Error) {
 		return transfer.copy(srcStore)
 	}
 
-	return os.NewError(fmt.Sprintf(
+	return errors.New(fmt.Sprintf(
 		"Cannot transfer %s: reference count underflow", transfer.From.RelPath))
 }
 
-func (transfer *Transfer) copy(srcStore fs.BlockStore) os.Error {
+func (transfer *Transfer) copy(srcStore fs.BlockStore) error {
 	if err := mkParentDirs(transfer.To); err != nil {
 		return err
 	}
@@ -96,7 +97,7 @@ func (transfer *Transfer) copy(srcStore fs.BlockStore) os.Error {
 	return err
 }
 
-func (transfer *Transfer) move(srcStore fs.BlockStore) os.Error {
+func (transfer *Transfer) move(srcStore fs.BlockStore) error {
 	if err := mkParentDirs(transfer.To); err != nil {
 		return err
 	}
@@ -113,14 +114,14 @@ func (keep *Keep) String() string {
 	return fmt.Sprintf("Keep %s", keep.Path.Resolve())
 }
 
-func (keep *Keep) Exec(srcStore fs.BlockStore) os.Error {
+func (keep *Keep) Exec(srcStore fs.BlockStore) error {
 	return nil
 }
 
 // Register a conflict
 type Conflict struct {
 	Path     *LocalPath
-	FileInfo *os.FileInfo
+	FileInfo os.FileInfo
 
 	relocPath string
 }
@@ -129,12 +130,12 @@ func (conflict *Conflict) String() string {
 	return fmt.Sprintf("Conflict found at %s, redirecting...", conflict.Path)
 }
 
-func (conflict *Conflict) Exec(srcStore fs.BlockStore) (err os.Error) {
+func (conflict *Conflict) Exec(srcStore fs.BlockStore) (err error) {
 	conflict.relocPath, err = conflict.Path.LocalStore.Relocate(conflict.Path.RelPath)
 	return err
 }
 
-func (conflict *Conflict) Cleanup() os.Error {
+func (conflict *Conflict) Cleanup() error {
 	return os.RemoveAll(conflict.relocPath)
 }
 
@@ -148,7 +149,7 @@ func (resize *Resize) String() string {
 	return fmt.Sprintf("Resize %s to %d bytes", resize.Path, resize.Size)
 }
 
-func (resize *Resize) Exec(srcStore fs.BlockStore) os.Error {
+func (resize *Resize) Exec(srcStore fs.BlockStore) error {
 	return os.Truncate(resize.Path.Resolve(), resize.Size)
 }
 
@@ -166,7 +167,7 @@ func (localTemp *LocalTemp) String() string {
 	return fmt.Sprintf("Create a temporary file for %s, size=%d bytes", localTemp.Path.Resolve(), localTemp.Size)
 }
 
-func (localTemp *LocalTemp) Exec(srcStore fs.BlockStore) (err os.Error) {
+func (localTemp *LocalTemp) Exec(srcStore fs.BlockStore) (err error) {
 	localTemp.localFh, err = os.Open(localTemp.Path.Resolve())
 	if err != nil {
 		return err
@@ -193,7 +194,7 @@ func (rwt *ReplaceWithTemp) String() string {
 	return fmt.Sprintf("Replace %s with the temporary backup", rwt.Temp.Path.Resolve())
 }
 
-func (rwt *ReplaceWithTemp) Exec(srcStore fs.BlockStore) (err os.Error) {
+func (rwt *ReplaceWithTemp) Exec(srcStore fs.BlockStore) (err error) {
 	tempName := rwt.Temp.tempFh.Name()
 	rwt.Temp.localFh.Close()
 	rwt.Temp.localFh = nil
@@ -227,7 +228,7 @@ func (ltc *LocalTempCopy) String() string {
 		ltc.Length, ltc.LocalOffset, ltc.Temp.Path.Resolve(), ltc.TempOffset)
 }
 
-func (ltc *LocalTempCopy) Exec(srcStore fs.BlockStore) (err os.Error) {
+func (ltc *LocalTempCopy) Exec(srcStore fs.BlockStore) (err error) {
 	_, err = ltc.Temp.localFh.Seek(ltc.LocalOffset, 0)
 	if err != nil {
 		return err
@@ -238,7 +239,7 @@ func (ltc *LocalTempCopy) Exec(srcStore fs.BlockStore) (err os.Error) {
 		return err
 	}
 
-	_, err = io.Copyn(ltc.Temp.tempFh, ltc.Temp.localFh, ltc.Length)
+	_, err = io.CopyN(ltc.Temp.tempFh, ltc.Temp.localFh, ltc.Length)
 	return err
 }
 
@@ -256,7 +257,7 @@ func (stc *SrcTempCopy) String() string {
 		stc.Length, stc.SrcOffset, stc.SrcStrong, stc.TempOffset)
 }
 
-func (stc *SrcTempCopy) Exec(srcStore fs.BlockStore) os.Error {
+func (stc *SrcTempCopy) Exec(srcStore fs.BlockStore) error {
 	stc.Temp.tempFh.Seek(stc.TempOffset, 0)
 	_, err := srcStore.ReadInto(stc.SrcStrong, stc.SrcOffset, stc.Length, stc.Temp.tempFh)
 	return err
@@ -273,7 +274,7 @@ func (sfd *SrcFileDownload) String() string {
 	return fmt.Sprintf("Copy entire source %s to %s", sfd.SrcFile.Info().Strong, sfd.Path.Resolve())
 }
 
-func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) os.Error {
+func (sfd *SrcFileDownload) Exec(srcStore fs.BlockStore) error {
 	if err := mkParentDirs(sfd.Path); err != nil {
 		return err
 	}
@@ -328,7 +329,7 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 		srcPath := fs.RelPath(srcFsNode)
 
 		// Remove this srcPath from dst unmatched, if it was present
-		plan.dstFileUnmatch[srcPath] = nil, false
+		delete(plan.dstFileUnmatch, srcPath)
 
 		var srcStrong string
 		if isSrcFile {
@@ -377,7 +378,7 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 			switch {
 
 			// Destination is not a file, so get rid of whatever is there first
-			case dstFileInfo != nil && !dstFileInfo.IsRegular():
+			case dstFileInfo != nil && !!dstFileInfo.IsDir():
 				plan.Cmds = append(plan.Cmds, &Conflict{
 					Path:     &LocalPath{LocalStore: dstStore, RelPath: srcPath},
 					FileInfo: dstFileInfo})
@@ -399,7 +400,7 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 			// If its a directory, check for conflicting files of same name
 		} else {
 
-			if dstFileInfo != nil && !dstFileInfo.IsDirectory() {
+			if dstFileInfo != nil && !dstFileInfo.IsDir() {
 				plan.Cmds = append(plan.Cmds, &Conflict{
 					Path:     &LocalPath{LocalStore: dstStore, RelPath: dstFilePath},
 					FileInfo: dstFileInfo})
@@ -412,7 +413,7 @@ func NewPatchPlan(srcStore fs.BlockStore, dstStore fs.LocalStore) *PatchPlan {
 	return plan
 }
 
-func (plan *PatchPlan) appendFilePlan(srcFile fs.File, dstPath string) os.Error {
+func (plan *PatchPlan) appendFilePlan(srcFile fs.File, dstPath string) error {
 	match, err := MatchFile(srcFile, plan.dstStore.Resolve(dstPath))
 	if match == nil {
 		return err
@@ -456,7 +457,7 @@ func (plan *PatchPlan) appendFilePlan(srcFile fs.File, dstPath string) os.Error 
 	return nil
 }
 
-func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
+func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err error) {
 	conflicts := []*Conflict{}
 	for _, cmd := range plan.Cmds {
 		err = cmd.Exec(plan.srcStore)
@@ -476,9 +477,9 @@ func (plan *PatchPlan) Exec() (failedCmd PatchCmd, err os.Error) {
 	return nil, nil
 }
 
-func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
+func (plan *PatchPlan) SetMode(errorChan chan<- error) {
 	fs.Walk(plan.srcStore.Repo().Root(), func(srcNode fs.Node) bool {
-		var err os.Error
+		var err error
 		srcFsNode, is := srcNode.(fs.FsNode)
 		if !is {
 			return false
@@ -488,11 +489,11 @@ func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
 		if absPath := plan.dstStore.Resolve(srcPath); absPath != "" {
 			err = os.Chmod(absPath, srcFsNode.Mode())
 		} else {
-			err = os.NewError(fmt.Sprintf("Expected %s not found in destination", srcPath))
+			err = errors.New(fmt.Sprintf("Expected %s not found in destination", srcPath))
 		}
 
-		if err != nil && errors != nil {
-			errors <- err
+		if err != nil && errorChan != nil {
+			errorChan <- err
 		}
 
 		_, is = srcNode.(fs.Dir)
@@ -500,12 +501,12 @@ func (plan *PatchPlan) SetMode(errors chan<- os.Error) {
 	})
 }
 
-func (plan *PatchPlan) Clean(errors chan<- os.Error) {
+func (plan *PatchPlan) Clean(errorChan chan<- error) {
 	for dstPath, _ := range plan.dstFileUnmatch {
 		absPath := plan.dstStore.Resolve(dstPath)
 		err := os.Remove(absPath)
-		if err != nil && errors != nil {
-			errors <- err
+		if err != nil && errorChan != nil {
+			errorChan <- err
 		}
 	}
 }
@@ -518,7 +519,7 @@ func (plan *PatchPlan) String() string {
 	return string(buf.Bytes())
 }
 
-func Patch(src string, dst string) (*PatchPlan, os.Error) {
+func Patch(src string, dst string) (*PatchPlan, error) {
 	srcStore, err := fs.NewLocalStore(src, fs.NewMemRepo())
 	if err != nil {
 		return nil, err

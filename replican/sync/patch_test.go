@@ -2,12 +2,11 @@ package sync
 
 import (
 	"fmt"
+	"github.com/cmars/replican-sync/replican/fs"
+	"github.com/cmars/replican-sync/replican/treegen"
 	"io"
 	"os"
 	"path/filepath"
-	"github.com/cmars/replican-sync/replican/fs"
-	"github.com/cmars/replican-sync/replican/fs/sqlite3"
-	"github.com/cmars/replican-sync/replican/treegen"
 	"strings"
 	"testing"
 
@@ -63,20 +62,10 @@ func mkMemRepo(_ *testing.T) fs.NodeRepo {
 	return fs.NewMemRepo()
 }
 
-func mkDbRepo(t *testing.T) fs.NodeRepo {
-	dbrepo, err := sqlite3.NewDbRepo(":memory:")
-	assert.T(t, err == nil)
-	return dbrepo
-}
-
 // Test the patch planner on two identical directory structures.
 
 func TestPatchIdentity(t *testing.T) {
 	DoTestPatchIdentity(t, mkMemRepo)
-}
-
-func TestDbPatchIdentity(t *testing.T) {
-	DoTestPatchIdentity(t, mkDbRepo)
 }
 
 func DoTestPatchIdentity(t *testing.T, mkrepo repoMaker) {
@@ -161,10 +150,6 @@ func TestPatchFileAppend(t *testing.T) {
 	DoTestPatchFileAppend(t, mkMemRepo)
 }
 
-func TestDbPatchFileAppend(t *testing.T) {
-	DoTestPatchFileAppend(t, mkDbRepo)
-}
-
 func DoTestPatchFileAppend(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537), tg.B(43, 65537)))
@@ -234,10 +219,6 @@ func TestPatchFileTruncate(t *testing.T) {
 	DoTestPatchFileTruncate(t, mkMemRepo)
 }
 
-func TestDbPatchFileTruncate(t *testing.T) {
-	DoTestPatchFileTruncate(t, mkDbRepo)
-}
-
 func DoTestPatchFileTruncate(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -302,10 +283,6 @@ func TestPatchAdd(t *testing.T) {
 	DoTestPatchAdd(t, mkMemRepo)
 }
 
-func TestDbPatchAdd(t *testing.T) {
-	DoTestPatchAdd(t, mkDbRepo)
-}
-
 func DoTestPatchAdd(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 
@@ -347,10 +324,6 @@ func TestPatchRenameFileSameDir(t *testing.T) {
 	DoTestPatchRenameFileSameDir(t, mkMemRepo)
 }
 
-func TestDbPatchRenameFileSameDir(t *testing.T) {
-	DoTestPatchRenameFileSameDir(t, mkDbRepo)
-}
-
 func DoTestPatchRenameFileSameDir(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo", tg.F("bar", tg.B(42, 65537)))
@@ -386,10 +359,6 @@ func DoTestPatchRenameFileSameDir(t *testing.T, mkrepo repoMaker) {
 
 func TestPatchRenameFileDifferentDir(t *testing.T) {
 	DoTestPatchRenameFileDifferentDir(t, mkMemRepo)
-}
-
-func TestDbPatchRenameFileDifferentDir(t *testing.T) {
-	DoTestPatchRenameFileDifferentDir(t, mkDbRepo)
 }
 
 func DoTestPatchRenameFileDifferentDir(t *testing.T, mkrepo repoMaker) {
@@ -443,10 +412,6 @@ func DoTestPatchRenameFileDifferentDir(t *testing.T, mkrepo repoMaker) {
 
 func TestPatchSimpleDirFileConflict(t *testing.T) {
 	DoTestPatchSimpleDirFileConflict(t, mkMemRepo)
-}
-
-func TestDbPatchSimpleDirFileConflict(t *testing.T) {
-	DoTestPatchSimpleDirFileConflict(t, mkDbRepo)
 }
 
 func DoTestPatchSimpleDirFileConflict(t *testing.T, mkrepo repoMaker) {
@@ -522,10 +487,6 @@ func TestPatchRelocConflict(t *testing.T) {
 	DoTestPatchRelocConflict(t, mkMemRepo)
 }
 
-func TestDbPatchRelocConflict(t *testing.T) {
-	DoTestPatchRelocConflict(t, mkDbRepo)
-}
-
 func DoTestPatchRelocConflict(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
@@ -585,10 +546,6 @@ func TestPatchDepConflict(t *testing.T) {
 	DoTestPatchDepConflict(t, mkMemRepo)
 }
 
-func TestDbPatchDepConflict(t *testing.T) {
-	DoTestPatchDepConflict(t, mkDbRepo)
-}
-
 func DoTestPatchDepConflict(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
@@ -627,10 +584,6 @@ func DoTestPatchDepConflict(t *testing.T, mkrepo repoMaker) {
 
 func TestPatchWeakCollision(t *testing.T) {
 	DoTestPatchWeakCollision(t, mkMemRepo)
-}
-
-func TestDbPatchWeakCollision(t *testing.T) {
-	DoTestPatchWeakCollision(t, mkDbRepo)
 }
 
 func DoTestPatchWeakCollision(t *testing.T, mkrepo repoMaker) {
@@ -682,10 +635,6 @@ func DoTestPatchWeakCollision(t *testing.T, mkrepo repoMaker) {
 
 func TestPatchRenameScope(t *testing.T) {
 	DoTestPatchRenameScope(t, mkMemRepo)
-}
-
-func TestDbPatchRenameScope(t *testing.T) {
-	DoTestPatchRenameScope(t, mkDbRepo)
 }
 
 func DoTestPatchRenameScope(t *testing.T, mkrepo repoMaker) {
@@ -747,10 +696,6 @@ func TestPatchPreserveKeeps(t *testing.T) {
 	DoTestPatchPreserveKeeps(t, mkMemRepo)
 }
 
-func TestDbPatchPreserveKeeps(t *testing.T) {
-	DoTestPatchPreserveKeeps(t, mkDbRepo)
-}
-
 func DoTestPatchPreserveKeeps(t *testing.T, mkrepo repoMaker) {
 	tg := treegen.New()
 	treeSpec := tg.D("foo",
@@ -791,10 +736,6 @@ func DoTestPatchPreserveKeeps(t *testing.T, mkrepo repoMaker) {
 
 func TestClean(t *testing.T) {
 	DoTestClean(t, mkMemRepo)
-}
-
-func TestDbClean(t *testing.T) {
-	DoTestClean(t, mkDbRepo)
 }
 
 func DoTestClean(t *testing.T, mkrepo repoMaker) {
@@ -849,7 +790,7 @@ func DoTestClean(t *testing.T, mkrepo repoMaker) {
 	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
 	assert.Tf(t, err == nil, "%v", err)
 
-	errors := make(chan os.Error)
+	errors := make(chan error)
 	go func() {
 		patchPlan.Clean(errors)
 		close(errors)
@@ -865,10 +806,6 @@ func DoTestClean(t *testing.T, mkrepo repoMaker) {
 
 func TestSetModeNew(t *testing.T) {
 	DoTestSetModeNew(t, mkMemRepo)
-}
-
-func TestDbSetModeNew(t *testing.T) {
-	DoTestSetModeNew(t, mkDbRepo)
 }
 
 func DoTestSetModeNew(t *testing.T, mkrepo repoMaker) {
@@ -901,7 +838,7 @@ func DoTestSetModeNew(t *testing.T, mkrepo repoMaker) {
 	assert.Tf(t, failedCmd == nil, "%v", failedCmd)
 	assert.Tf(t, err == nil, "%v", err)
 
-	errors := make(chan os.Error)
+	errors := make(chan error)
 	go func() {
 		patchPlan.Clean(errors)
 		close(errors)
@@ -910,7 +847,7 @@ func DoTestSetModeNew(t *testing.T, mkrepo repoMaker) {
 		assert.Tf(t, err == nil, "%v", err)
 	}
 
-	errors = make(chan os.Error)
+	errors = make(chan error)
 	go func() {
 		patchPlan.SetMode(errors)
 		close(errors)
@@ -921,19 +858,15 @@ func DoTestSetModeNew(t *testing.T, mkrepo repoMaker) {
 
 	fileinfo, err := os.Stat(filepath.Join(dstpath, "foo", "bar", "aleph", "A"))
 	assert.T(t, fileinfo != nil)
-	assert.Equal(t, uint32(0765), fileinfo.Permission())
+	assert.Equal(t, uint32(0765), uint32(fileinfo.Mode() & os.ModePerm))
 
 	fileinfo, err = os.Stat(filepath.Join(dstpath, "foo", "bar"))
 	assert.T(t, fileinfo != nil)
-	assert.Equal(t, uint32(0711), fileinfo.Permission())
+	assert.Equal(t, uint32(0711), uint32(fileinfo.Mode() & os.ModePerm))
 }
 
 func TestSetModeOverwrite(t *testing.T) {
 	DoTestSetModeOverwrite(t, mkMemRepo)
-}
-
-func TestDbSetModeOverwrite(t *testing.T) {
-	DoTestSetModeOverwrite(t, mkDbRepo)
 }
 
 func DoTestSetModeOverwrite(t *testing.T, mkrepo repoMaker) {
@@ -972,7 +905,7 @@ func DoTestSetModeOverwrite(t *testing.T, mkrepo repoMaker) {
 	assert.Tf(t, failedCmd == nil, "%v %v", failedCmd, err)
 	assert.Tf(t, err == nil, "%v", err)
 
-	errors := make(chan os.Error)
+	errors := make(chan error)
 	go func() {
 		patchPlan.Clean(errors)
 		close(errors)
@@ -981,7 +914,7 @@ func DoTestSetModeOverwrite(t *testing.T, mkrepo repoMaker) {
 		assert.Tf(t, err == nil, "%v", err)
 	}
 
-	errors = make(chan os.Error)
+	errors = make(chan error)
 	go func() {
 		patchPlan.SetMode(errors)
 		close(errors)
@@ -992,9 +925,9 @@ func DoTestSetModeOverwrite(t *testing.T, mkrepo repoMaker) {
 
 	fileinfo, err := os.Stat(filepath.Join(dstpath, "foo", "bar", "aleph", "A"))
 	assert.T(t, fileinfo != nil)
-	assert.Equal(t, uint32(0765), fileinfo.Permission())
+	assert.Equal(t, uint32(0765), uint32(fileinfo.Mode() & os.ModePerm))
 
 	fileinfo, err = os.Stat(filepath.Join(dstpath, "foo", "bar"))
 	assert.T(t, fileinfo != nil)
-	assert.Equal(t, uint32(0711), fileinfo.Permission())
+	assert.Equal(t, uint32(0711), uint32(fileinfo.Mode() & os.ModePerm))
 }

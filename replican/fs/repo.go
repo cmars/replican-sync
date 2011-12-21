@@ -117,7 +117,7 @@ func (dir *memDir) SubDirs() []Dir {
 func (dir *memDir) UpdateStrong() string {
 	newStrong := CalcStrong(dir)
 	if newStrong != dir.info.Strong {
-		dir.repo.dirs[dir.info.Strong] = nil, false
+		delete(dir.repo.dirs, dir.info.Strong)
 		dir.repo.dirs[newStrong] = dir
 		dir.info.Strong = newStrong
 	}

@@ -29,11 +29,12 @@ package treegen
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
-	"rand"
 	"syscall"
 	"testing"
 
@@ -141,7 +142,7 @@ func TestTree(t *testing.T, g Generated) string {
 	return tempdir
 }
 
-func Fab(parent string, g Generated) os.Error {
+func Fab(parent string, g Generated) error {
 	if d, isD := g.(*Dir); isD {
 		return d.fab(parent)
 	} else if f, isF := g.(*File); isF {
@@ -150,10 +151,10 @@ func Fab(parent string, g Generated) os.Error {
 		return b.fab(parent)
 	}
 
-	return os.NewError(fmt.Sprintf("WTF is this: %v?", g))
+	return errors.New(fmt.Sprintf("WTF is this: %v?", g))
 }
 
-func (d *Dir) fab(parent string) os.Error {
+func (d *Dir) fab(parent string) error {
 	name := d.Name
 
 	path := filepath.Join(parent, name)
@@ -172,7 +173,7 @@ func (d *Dir) fab(parent string) os.Error {
 	return fabEntries(path, d.Contents[0], d.Contents[1:])
 }
 
-func (f *File) fab(parent string) os.Error {
+func (f *File) fab(parent string) error {
 	name := f.Name
 
 	path := filepath.Join(parent, name)
@@ -194,7 +195,7 @@ func (f *File) fab(parent string) os.Error {
 
 const CHUNKSIZE int = 8192
 
-func (b *Bytes) fab(parent string) os.Error {
+func (b *Bytes) fab(parent string) error {
 	fh, err := os.OpenFile(parent, os.O_RDWR|os.O_APPEND, 0644)
 	if fh == nil {
 		return err
@@ -220,7 +221,7 @@ func (b *Bytes) fab(parent string) os.Error {
 	return nil
 }
 
-func fabEntries(path string, first Generated, rest []Generated) os.Error {
+func fabEntries(path string, first Generated, rest []Generated) error {
 	if err := Fab(path, first); err != nil {
 		return err
 	}

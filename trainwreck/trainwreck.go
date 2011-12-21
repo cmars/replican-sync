@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"rand"
 	"github.com/cmars/replican-sync/replican/fs"
+	"math/rand"
 )
 
 /*

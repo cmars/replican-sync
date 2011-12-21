@@ -14,7 +14,7 @@ func TestFsIndexSomeMp3(t *testing.T) {
 
 	f, blks, err := fs.IndexFile("../../testroot/My Music/0 10k 30.mp4")
 	if f == nil {
-		t.Fatalf("Failed to index file: %s", err.String())
+		t.Fatalf("Failed to index file: %v", err)
 	}
 
 	assert.Equal(t, "5ab3e5d621402e5894429b5f595a1e2d7e1b3078", f.Strong)
