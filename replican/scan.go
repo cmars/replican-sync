@@ -5,8 +5,10 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+//	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Scanner struct {
@@ -30,13 +32,16 @@ func (scanner *Scanner) Start(root string) {
 
 		PostOrderWalk(root, func(path string, info os.FileInfo, err error) error {
 			path = filepath.Clean(path)
-			parts := filepath.SplitList(path)
+			parts := splitNames(path)
+//			log.Printf("parts: %v", parts)
 			depth := len(parts)
+			parentDirent := ""
 			
 			if info.IsDir() {
 				var dirStrong [sha1.Size]byte
-				if dirbuf, has := dirbufs[depth-1]; has {
-					delete(dirbufs, depth-1)
+				if dirbuf, has := dirbufs[depth+1]; has {
+//					log.Printf("dirbuf for %s: |%s|", path, dirbuf.String())
+					delete(dirbufs, depth+1)
 					dirStrong = StrongChecksum(dirbuf.Bytes())
 				} else { // empty directory!
 					dirStrong = StrongChecksum([]byte{})
@@ -51,6 +56,9 @@ func (scanner *Scanner) Start(root string) {
 					Sibling: sibling,
 					Depth:   depth}
 				
+				parentDirent = fmt.Sprintf("d\t%x\t%s\n", dirStrong, parts[len(parts)-1])
+				
+				delete(lastSibling, depth+1)
 				lastSibling[depth] = recPos
 				recPos++
 
@@ -68,6 +76,8 @@ func (scanner *Scanner) Start(root string) {
 						recPos++
 					}
 					
+					parentDirent = fmt.Sprintf("f\t%x\t%s\n", fileRec.Strong, parts[len(parts)-1])
+					
 					lastSibling[depth] = recPos
 					recPos++
 					
@@ -78,6 +88,16 @@ func (scanner *Scanner) Start(root string) {
 					return err
 				}
 			}
+			
+			if parentDirent != "" {
+				dirbuf, has := dirbufs[depth]
+				if !has {
+					dirbuf = bytes.NewBuffer([]byte{})
+					dirbufs[depth] = dirbuf
+				}
+				dirbuf.WriteString(parentDirent)
+			}
+			
 			return nil
 		}, nil)
 		
@@ -179,4 +199,11 @@ func ScanBlock(buf []byte) *BlockRec {
 	rec := &BlockRec{ Type: BLOCK, Weak: weak.Get() }
 	copyStrong(hash.Sum(nil), &rec.Strong)
 	return rec
+}
+
+func splitNames(path string) []string {
+	if path == "" {
+		return []string{}
+	}
+	return strings.Split(path, string(os.PathSeparator))
 }

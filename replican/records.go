@@ -21,6 +21,18 @@ const (
 
 type RecType byte
 
+func (recType RecType) String() string {
+	switch (recType) {
+	case BLOCK:
+		return "BLOCK"
+	case FILE:
+		return "FILE"
+	case DIR:
+		return "DIR"
+	}
+	return "UNKNOWN"
+}
+
 // Represent a block in a hierarchical tree model.
 // Blocks are BLOCKSIZE chunks of data which comprise files.
 type BlockRec struct {
