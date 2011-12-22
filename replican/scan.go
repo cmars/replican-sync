@@ -1,49 +1,88 @@
 package replican
 
 import (
+	"bytes"
+	"crypto/sha1"
 	"errors"
 	"fmt"
-	"crypto/sha1"
 	"os"
 	"path/filepath"
 )
 
 type Scanner struct {
-	Nodes chan interface{}
+	Records chan interface{}
 	Paths chan string
+	Done chan bool
 }
 
 func NewScanner() *Scanner {
-	return &Scanner{ 
-		Nodes: make(chan interface{}),
-		Paths: make(chan string) } }
+	return &Scanner{
+		Records: make(chan interface{}),
+		Paths: make(chan string),
+		Done: make(chan bool) }
+}
 
-func (scanner *Scanner) Scan(root string) {
-	go func(){
+func (scanner *Scanner) Start(root string) {
+	go func() {
+		recPos := 0
+		lastSibling := make(map[int]int) // recPos of last directory at given depth
+		dirbufs := make(map[int]*bytes.Buffer) // directory entry in progress at level
+
 		PostOrderWalk(root, func(path string, info os.FileInfo, err error) error {
 			path = filepath.Clean(path)
-	//		parts := filepath.SplitList(path)
-			if info.IsDir() {
+			parts := filepath.SplitList(path)
+			depth := len(parts)
 			
+			if info.IsDir() {
+				var dirStrong [sha1.Size]byte
+				if dirbuf, has := dirbufs[depth-1]; has {
+					delete(dirbufs, depth-1)
+					dirStrong = StrongChecksum(dirbuf.Bytes())
+				} else { // empty directory!
+					dirStrong = StrongChecksum([]byte{})
+				}
+				
+				sibling, has := lastSibling[depth]
+				if !has { sibling = -1 }
+				
+				dirRec := &DirRec{
+					Type: DIR,
+					Strong:  dirStrong,
+					Sibling: sibling,
+					Depth:   depth}
+				
+				lastSibling[depth] = recPos
+				recPos++
+
+				scanner.Records <- dirRec
+				scanner.Paths <- path
 			} else {
 				if fileRec, blocksRec, err := ScanBlocks(path); err == nil {
+					
+					sibling, has := lastSibling[depth]
+					if !has { sibling = -1 }
+					fileRec.Sibling = sibling
+					
 					for _, blockRec := range blocksRec {
-						scanner.Nodes <- blockRec
+						scanner.Records <- blockRec
+						recPos++
 					}
-					scanner.Nodes <- fileRec
+					
+					lastSibling[depth] = recPos
+					recPos++
+					
+					scanner.Records <- fileRec
 					scanner.Paths <- path
-				}
-				if err != nil {
-					return err
+					
 				} else {
-				
+					return err
 				}
 			}
 			return nil
 		}, nil)
+		
+		scanner.Done <- true
 	}()
-	close(scanner.Nodes)
-	close(scanner.Paths)
 }
 
 func ScanFile(path string) (fileRec *FileRec, err error) {
@@ -63,7 +102,7 @@ func ScanFile(path string) (fileRec *FileRec, err error) {
 	}
 	defer f.Close()
 
-	fileRec = &FileRec{}
+	fileRec = &FileRec{ Type: FILE }
 	hash := sha1.New()
 
 	for {
@@ -100,7 +139,7 @@ func ScanBlocks(path string) (fileRec *FileRec, blocksRec []*BlockRec, err error
 	}
 	defer f.Close()
 
-	fileRec = &FileRec{}
+	fileRec = &FileRec{ Type: FILE }
 
 	var block *BlockRec
 	hash := sha1.New()
@@ -112,9 +151,7 @@ func ScanBlocks(path string) (fileRec *FileRec, blocksRec []*BlockRec, err error
 		case rd < 0:
 			return nil, nil, err
 		case rd == 0:
-			for i, b := range hash.Sum(nil) {
-				fileRec.Strong[i] = b
-			}
+			copyStrong(hash.Sum(nil), &fileRec.Strong)
 			return fileRec, blocksRec, nil
 		case rd > 0:
 			// Update block hashes
@@ -138,42 +175,8 @@ func ScanBlock(buf []byte) *BlockRec {
 	weak.Write(buf)
 	var hash = sha1.New()
 	hash.Write(buf)
-	
-	rec := &BlockRec{ Weak:   weak.Get() }
-	for i, b := range hash.Sum(nil) {
-		rec.Strong[i] = b
-	}
+
+	rec := &BlockRec{ Type: BLOCK, Weak: weak.Get() }
+	copyStrong(hash.Sum(nil), &rec.Strong)
 	return rec
-}
-
-// Represent a weak checksum as described in the rsync algorithm paper
-type WeakChecksum struct {
-	a int
-	b int
-}
-
-// Reset the state of the checksum
-func (weak *WeakChecksum) Reset() {
-	weak.a = 0
-	weak.b = 0
-}
-
-// Write a block of data into the checksum
-func (weak *WeakChecksum) Write(buf []byte) {
-	for i := 0; i < len(buf); i++ {
-		b := int(buf[i])
-		weak.a += b
-		weak.b += (len(buf) - i) * b
-	}
-}
-
-// Get the current weak checksum value
-func (weak *WeakChecksum) Get() int {
-	return weak.b<<16 | weak.a
-}
-
-// Roll the checksum forward by one byte
-func (weak *WeakChecksum) Roll(removedByte byte, newByte byte) {
-	weak.a -= int(removedByte) - int(newByte)
-	weak.b -= int(removedByte)*BLOCKSIZE - weak.a
 }
