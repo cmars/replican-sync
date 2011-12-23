@@ -2,15 +2,12 @@ package replican
 
 import (
 	"crypto/sha1"
-/*
-	"bytes"
-	"fmt"
-	"path/filepath"
-*/
 )
 
 // Block size used for checksum, comparison, transmitting deltas.
 const BLOCKSIZE int = 8192
+
+const RECSIZE int = 1+sha1.Size+4+4
 
 const (
 	_ = iota
@@ -19,7 +16,7 @@ const (
 	DIR
 )
 
-type RecType byte
+type RecType uint8
 
 func (recType RecType) String() string {
 	switch (recType) {
@@ -36,10 +33,10 @@ func (recType RecType) String() string {
 // Represent a block in a hierarchical tree model.
 // Blocks are BLOCKSIZE chunks of data which comprise files.
 type BlockRec struct {
-	Type     RecType
+	Type     uint8
 	Strong   [sha1.Size]byte
-	Weak     int
-	Position int
+	Weak     int32
+	Position int32
 }
 
 // Get the byte offset of this block in its containing file.
@@ -49,16 +46,16 @@ func (block *BlockRec) Offset() int64 {
 
 // Represent a file in a hierarchical tree model.
 type FileRec struct {
-	Type    RecType
+	Type    uint8
 	Strong  [sha1.Size]byte
-	Sibling int
-	Depth   int
+	Sibling int32
+	Depth   int32
 }
 
 // Represent a directory in a hierarchical tree model.
 type DirRec struct {
-	Type    RecType
+	Type    uint8
 	Strong  [sha1.Size]byte
-	Sibling int
-	Depth   int
+	Sibling int32
+	Depth   int32
 }
