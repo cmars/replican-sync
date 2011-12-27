@@ -3,39 +3,12 @@ package replican
 import (
 	"bytes"
 	"crypto/sha1"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
-// Message containing a scanned record during a directory walk.
-// Only one of Block, File or Dir will be set, the others will be nil.
-type ScanRec struct {
-
-	// The sequence number is the order in which the record occurs.
-	// This alone can be used to locate the record in the stream since records 
-	// have a fixed size.
-	Seq int
-	
-	// The path associated with the record.
-	// If the record is a block, the path is an empty string.
-	Path string
-	
-	Block *BlockRec
-	File *FileRec
-	Dir *DirRec
-}
-
-type RecSource interface {
-	
-	Records() <- chan *ScanRec
-	
-}
 
 type Walker struct {
 	path string
@@ -89,7 +62,7 @@ func (walker *Walker) run() {
 			lastSibling[depth] = recPos
 
 			walker.records <- &ScanRec{
-				Seq: recPos,
+				Seq: int32(recPos),
 				Path: path,
 				Dir: dirRec }
 			
@@ -103,7 +76,7 @@ func (walker *Walker) run() {
 				
 				for _, blockRec := range blocksRec {
 					walker.records <- &ScanRec{
-						Seq: recPos,
+						Seq: int32(recPos),
 						Block: blockRec }
 					recPos++
 				}
@@ -111,7 +84,7 @@ func (walker *Walker) run() {
 				parentDirent = fmt.Sprintf("f\t%x\t%s\n", fileRec.Strong, parts[len(parts)-1])
 				
 				walker.records <- &ScanRec{
-					Seq: recPos,
+					Seq: int32(recPos),
 					Path: path,
 					File: fileRec }
 				
@@ -239,99 +212,4 @@ func splitNames(path string) []string {
 		return []string{}
 	}
 	return strings.Split(path, string(os.PathSeparator))
-}
-
-type RecWriter struct {
-	scanner RecSource
-	writer io.Writer
-}
-
-func NewRecWriter(scanner RecSource, writer io.Writer) *RecWriter {
-	recWriter := &RecWriter{
-		scanner: scanner,
-		writer: writer }
-	return recWriter
-}
-
-func (recWriter *RecWriter) WriteAll() {
-	var err error
-	for {
-		rec, ok := <- recWriter.scanner.Records()
-		if rec != nil {
-			switch {
-			case rec.Block != nil:
-				err = binary.Write(recWriter.writer, binary.LittleEndian, rec.Block)
-			case rec.File != nil:
-				err = binary.Write(recWriter.writer, binary.LittleEndian, rec.File)
-			case rec.Dir != nil:
-				err = binary.Write(recWriter.writer, binary.LittleEndian, rec.Dir)
-			default:
-				log.Printf("empty record: %v", rec)
-			}
-			
-			if err != nil {
-				log.Printf("write %v failed: %v", rec, err)
-			}
-		}
-		if !ok { return }
-	}
-}
-
-type RecReader struct {
-	records chan *ScanRec
-	reader io.Reader
-}
-
-func NewRecReader(reader io.Reader) *RecReader {
-	recReader := &RecReader{
-		reader: reader,
-		records: make(chan *ScanRec) }
-	go recReader.run()
-	return recReader
-}
-
-func (recReader *RecReader) Records() <- chan *ScanRec {
-	return recReader.records
-}
-
-func (recReader *RecReader) run() {
-	var rec *ScanRec
-	recPos := 0
-	for {
-		rec = &ScanRec{ Seq: recPos }
-		buf := make([]byte, RECSIZE)
-		n, err := io.ReadFull(recReader.reader, buf)
-		if err != nil {
-			if (err == io.ErrUnexpectedEOF && n > 0) {
-				log.Printf("read failed: only %d bytes read, %v", n, err)
-			}
-			break
-		}
-		recPos++
-//		log.Printf("buf: %x", buf)
-		bbuf := bytes.NewBuffer(buf)
-		switch RecType(buf[0]) {
-		case BLOCK:
-			rec.Block = new(BlockRec)
-			err = binary.Read(bbuf, binary.LittleEndian, rec.Block)
-		case FILE:
-			rec.File = new(FileRec)
-			err = binary.Read(bbuf, binary.LittleEndian, rec.File)
-		case DIR:
-			rec.Dir = new(DirRec)
-			err = binary.Read(bbuf, binary.LittleEndian, rec.Dir)
-		default:
-			log.Printf("invalid record: %v", rec)
-			rec = nil
-		}
-		
-		if err != nil {
-			log.Printf("read failed: %v", err)
-		}
-		
-		if rec != nil {
-			recReader.records <- rec
-		}
-	}
-	close(recReader.records)
 }

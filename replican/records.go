@@ -59,3 +59,27 @@ type DirRec struct {
 	Sibling int32
 	Depth   int32
 }
+
+// Message containing a scanned record during a directory walk.
+// Only one of Block, File or Dir will be set, the others will be nil.
+type ScanRec struct {
+
+	// The sequence number is the order in which the record occurs.
+	// This alone can be used to locate the record in the stream since records 
+	// have a fixed size.
+	Seq int32
+	
+	// The path associated with the record.
+	// If the record is a block, the path is an empty string.
+	Path string
+	
+	Block *BlockRec
+	File *FileRec
+	Dir *DirRec
+}
+
+type RecSource interface {
+	
+	Records() <- chan *ScanRec
+	
+}

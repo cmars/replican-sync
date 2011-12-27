@@ -2,6 +2,7 @@ package replican
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"github.com/cmars/replican-sync/replican/treegen"
 
 	"github.com/bmizerany/assert"
+	
+	gocask "gocask.googlecode.com/hg"
 )
 
 func makeTree(t *testing.T) string {
@@ -138,7 +141,7 @@ func TestRecIO(t *testing.T) {
 	
 	recout, err := ioutil.TempFile("", "recIO")
 	assert.T(t, err == nil)
-//	defer os.Remove(recout.Name())
+	defer os.Remove(recout.Name())
 	
 	walker := NewWalker(root)
 	writer := NewRecWriter(walker, recout)
@@ -171,4 +174,34 @@ func TestRecIO(t *testing.T) {
 			assert.Tf(t, false, "Invalid record: %v", walkRec)
 		}
 	}
+}
+
+func TestCaskIndex(t *testing.T) {
+	root := makeTree(t)
+	defer os.RemoveAll(root)
+	
+	caskDir, err := ioutil.TempDir("", "caskIndex")
+	assert.T(t, err == nil)
+//	log.Printf("cask at: %s", caskDir)
+	defer os.Remove(caskDir)
+	
+	cask, err := gocask.NewGocask(caskDir)
+	assert.T(t, err == nil)
+	defer cask.Close()
+	assert.T(t, err == nil)
+	
+	walker := NewWalker(root)
+	writer := NewCaskWriter(walker, cask)
+	writer.WriteAll()
+	
+	cask, err = gocask.NewGocask(caskDir)
+	assert.T(t, err == nil)
+	defer cask.Close()
+	seqByStrong, err := cask.Get("dfb8f2ebf71da49c404b862cac704b84b98b7aed")
+	assert.T(t, err == nil)
+	assert.Equal(t, int32(4), bytesToInt(seqByStrong))
+	
+	nameBySeq, err := cask.Get(fmt.Sprintf("%x", 4))
+	assert.T(t, err == nil)
+	assert.Equal(t, "D", string(nameBySeq))
 }
