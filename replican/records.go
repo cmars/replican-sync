@@ -80,6 +80,30 @@ type ScanRec struct {
 
 type RecSource interface {
 	
-	Records() <- chan *ScanRec
+	AddOutput(recChan chan *ScanRec)
 	
+	Start()
+	
+}
+
+type RecSink interface {
+	
+	SetSource(recChan <- chan *ScanRec)
+	
+	Start()
+	
+	Wait()
+	
+}
+
+func closeAll(outputs []chan *ScanRec) {
+	for _, records := range outputs {
+		close(records)
+	}
+}
+
+func sendRec(outputs []chan *ScanRec, rec *ScanRec) {
+	for _, records := range outputs {
+		records <- rec
+	}
 }

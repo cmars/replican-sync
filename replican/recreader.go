@@ -8,27 +8,29 @@ import (
 )
 
 type RecReader struct {
-	records chan *ScanRec
+	outputs []chan *ScanRec
 	reader io.Reader
 }
 
 func NewRecReader(reader io.Reader) *RecReader {
 	recReader := &RecReader{
 		reader: reader,
-		records: make(chan *ScanRec) }
-	go recReader.run()
+		outputs: []chan *ScanRec{} }
 	return recReader
 }
 
-func (recReader *RecReader) Records() <- chan *ScanRec {
-	return recReader.records
+func (recReader *RecReader) AddOutput(records chan *ScanRec) {
+	recReader.outputs = append(recReader.outputs, records)
+}
+
+func (recReader *RecReader) Start() {
+	go recReader.run()
 }
 
 func (recReader *RecReader) run() {
-	var rec *ScanRec
-	recPos := 0
+	recPos := int32(0)
 	for {
-		rec = &ScanRec{ Seq: int32(recPos) }
+		rec := &ScanRec{ Seq: recPos }
 		buf := make([]byte, RECSIZE)
 		n, err := io.ReadFull(recReader.reader, buf)
 		if err != nil {
@@ -37,19 +39,21 @@ func (recReader *RecReader) run() {
 			}
 			break
 		}
-		recPos++
 //		log.Printf("buf: %x", buf)
 		bbuf := bytes.NewBuffer(buf)
 		switch RecType(buf[0]) {
 		case BLOCK:
 			rec.Block = new(BlockRec)
 			err = binary.Read(bbuf, binary.LittleEndian, rec.Block)
+//			log.Printf("read: %v %v", rec, rec.Block)
 		case FILE:
 			rec.File = new(FileRec)
 			err = binary.Read(bbuf, binary.LittleEndian, rec.File)
+//			log.Printf("read: %v %v", rec, rec.File)
 		case DIR:
 			rec.Dir = new(DirRec)
 			err = binary.Read(bbuf, binary.LittleEndian, rec.Dir)
+//			log.Printf("read: %v %v", rec, rec.Dir)
 		default:
 			log.Printf("invalid record: %v", rec)
 			rec = nil
@@ -60,8 +64,10 @@ func (recReader *RecReader) run() {
 		}
 		
 		if rec != nil {
-			recReader.records <- rec
+			sendRec(recReader.outputs, rec)
+			recPos++
 		}
 	}
-	close(recReader.records)
+	
+	closeAll(recReader.outputs)
 }

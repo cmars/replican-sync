@@ -12,22 +12,27 @@ import (
 
 type Walker struct {
 	path string
-	records chan *ScanRec
+	outputs []chan *ScanRec
 }
 
 func NewWalker(path string) *Walker {
 	walker := &Walker{
 		path: path,
-		records: make(chan *ScanRec) }
-	go walker.run()
+		outputs: []chan *ScanRec{} }
 	return walker
 }
 
-func (walker *Walker) Records() <- chan *ScanRec { return walker.records }
+func (walker *Walker) AddOutput(records chan *ScanRec) {
+	walker.outputs = append(walker.outputs, records)
+}
+
+func (walker *Walker) Start() {
+	go walker.run()
+}
 
 func (walker *Walker) run() {
-	recPos := int(0)
-	lastSibling := make(map[int]int) // recPos of last directory at given depth
+	recPos := int32(0)
+	lastSibling := make(map[int]int32) // recPos of last directory at given depth
 	dirbufs := make(map[int]*bytes.Buffer) // directory entry in progress at level
 
 	PostOrderWalk(walker.path, func(path string, info os.FileInfo, err error) error {
@@ -61,10 +66,10 @@ func (walker *Walker) run() {
 			delete(lastSibling, depth+1)
 			lastSibling[depth] = recPos
 
-			walker.records <- &ScanRec{
-				Seq: int32(recPos),
+			sendRec(walker.outputs, &ScanRec{
+				Seq: recPos,
 				Path: path,
-				Dir: dirRec }
+				Dir: dirRec })
 			
 			recPos++
 		} else {
@@ -75,18 +80,18 @@ func (walker *Walker) run() {
 				fileRec.Sibling = int32(sibling)
 				
 				for _, blockRec := range blocksRec {
-					walker.records <- &ScanRec{
-						Seq: int32(recPos),
-						Block: blockRec }
+					sendRec(walker.outputs, &ScanRec{
+						Seq: recPos,
+						Block: blockRec })
 					recPos++
 				}
 				
 				parentDirent = fmt.Sprintf("f\t%x\t%s\n", fileRec.Strong, parts[len(parts)-1])
 				
-				walker.records <- &ScanRec{
-					Seq: int32(recPos),
+				sendRec(walker.outputs, &ScanRec{
+					Seq: recPos,
 					Path: path,
-					File: fileRec }
+					File: fileRec })
 				
 				lastSibling[depth] = recPos
 				recPos++
@@ -108,7 +113,7 @@ func (walker *Walker) run() {
 		return nil
 	}, nil)
 	
-	close(walker.records)
+	closeAll(walker.outputs)
 }
 
 func ScanFile(path string) (fileRec *FileRec, err error) {

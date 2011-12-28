@@ -37,12 +37,16 @@ func TestScanSiblings(t *testing.T) {
 	
 	walker := NewWalker(root)
 	
+	recChan := make(chan *ScanRec)
 	recs := []*ScanRec{}
 	
 	l := log.New(ioutil.Discard, "", log.LstdFlags | log.Lshortfile)
 //	l = log.New(os.Stdout, "", log.LstdFlags | log.Lshortfile)
 	
-	for scanRec := range walker.Records() {
+	walker.AddOutput(recChan)
+	walker.Start()
+	
+	for scanRec := range recChan {
 		switch {
 		case scanRec.Block != nil:
 			l.Printf("%v %v", scanRec.Seq, scanRec.Block.Type)
@@ -144,22 +148,38 @@ func TestRecIO(t *testing.T) {
 	defer os.Remove(recout.Name())
 	
 	walker := NewWalker(root)
-	writer := NewRecWriter(walker, recout)
-	writer.WriteAll()
+	recChan := make(chan *ScanRec)
+	walker.AddOutput(recChan)
+	
+	writer := NewRecWriter(recChan, recout)
+	walker.Start()
+	writer.Start()
+	writer.Wait()
+	
 	recout.Sync()
 	recout.Close()
 	
 	recin, err := os.Open(recout.Name())
 	assert.T(t, err == nil)
+	
 	reader := NewRecReader(recin)
+	readerChan := make(chan *ScanRec)
+	reader.AddOutput(readerChan)
+	
 	walker = NewWalker(root)
+	recChan = make(chan *ScanRec)
+	walker.AddOutput(recChan)
+	
+	walker.Start()
+	reader.Start()
+	
 	for {
-		readRec, rok := <- reader.Records()
-		walkRec, wok := <- walker.Records()
+		readRec, rok := <- readerChan
+		walkRec, wok := <- recChan
 		assert.Equal(t, rok, wok)
 		if !wok || !rok { break }
 		
-		assert.Equal(t, walkRec.Seq, readRec.Seq)
+		assert.Equalf(t, walkRec.Seq, readRec.Seq, "walk: %v read: %v", walkRec, readRec)
 		switch {
 		case walkRec.Block != nil:
 			assert.T(t, readRec.Block != nil)
@@ -191,8 +211,14 @@ func TestCaskIndex(t *testing.T) {
 	assert.T(t, err == nil)
 	
 	walker := NewWalker(root)
-	writer := NewCaskWriter(walker, cask)
-	writer.WriteAll()
+	recChan := make(chan *ScanRec)
+	walker.AddOutput(recChan)
+	
+	writer := NewCaskWriter(recChan, cask)
+	
+	walker.Start()
+	writer.Start()
+	writer.Wait()
 	
 	cask, err = gocask.NewGocask(caskDir)
 	assert.T(t, err == nil)

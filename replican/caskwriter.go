@@ -11,14 +11,16 @@ import (
 )
 
 type CaskWriter struct {
-	scanner RecSource
+	records chan *ScanRec
 	cask *gocask.Gocask
+	exitChan chan bool
 }
 
-func NewCaskWriter(scanner RecSource, cask* gocask.Gocask) *CaskWriter {
+func NewCaskWriter(records chan *ScanRec, cask* gocask.Gocask) *CaskWriter {
 	return &CaskWriter{
-		scanner: scanner,
-		cask: cask }
+		records: records,
+		cask: cask,
+		exitChan: make(chan bool) }
 }
 
 func intToBytes(i int32) []byte {
@@ -34,10 +36,18 @@ func bytesToInt(b []byte) int32 {
 	return i
 }
 
-func (caskWriter *CaskWriter) WriteAll() {
+func (caskWriter *CaskWriter) Start() {
+	go caskWriter.run()
+}
+
+func (caskWriter *CaskWriter) Wait() {
+	_ = <- caskWriter.exitChan
+}
+
+func (caskWriter *CaskWriter) run() {
 	var err error
 	for {
-		rec, ok := <- caskWriter.scanner.Records()
+		rec, ok := <- caskWriter.records
 		if rec != nil && rec.Path != "" {
 			_, name := filepath.Split(rec.Path)
 			seqBytes := intToBytes(rec.Seq)
@@ -53,6 +63,7 @@ func (caskWriter *CaskWriter) WriteAll() {
 				log.Printf("put %v failed: %v", rec, err)
 			}
 		}
-		if !ok { return }
+		if !ok { break }
 	}
+	close(caskWriter.exitChan)
 }

@@ -7,33 +7,32 @@ import (
 )
 
 type RecWriter struct {
-	scanner RecSource
-	writer io.Writer
 	records chan *ScanRec
+	writer io.Writer
+	exitChan chan bool
 }
 
-func NewRecWriter(scanner RecSource, writer io.Writer) *RecWriter {
-	recWriter := &RecWriter{
-		scanner: scanner,
-		writer: writer }
-	return recWriter
+func NewRecWriter(records chan *ScanRec, writer io.Writer) *RecWriter {
+	return &RecWriter{
+		records: records,
+		writer: writer,
+		exitChan: make(chan bool) }
 }
 
-func (recWriter *RecWriter) Records() <- chan *ScanRec { return recWriter.records }
-
-func (recWriter *RecWriter) WriteAll() {
-	recWriter.WriteFwd(nil)
+func (recWriter *RecWriter) Start() {
+	go recWriter.run()
 }
 
-func (recWriter *RecWriter) WriteFwd(records chan *ScanRec) {
-	if records != nil {
-		recWriter.records = records
-	}
-	
+func (recWriter *RecWriter) Wait() {
+	_ = <- recWriter.exitChan
+}
+
+func (recWriter *RecWriter) run() {
 	var err error
 	for {
-		rec, ok := <- recWriter.scanner.Records()
+		rec, ok := <- recWriter.records
 		if rec != nil {
+//			log.Printf("write: %v", rec)
 			switch {
 			case rec.Block != nil:
 				err = binary.Write(recWriter.writer, binary.LittleEndian, rec.Block)
@@ -48,11 +47,9 @@ func (recWriter *RecWriter) WriteFwd(records chan *ScanRec) {
 			if err != nil {
 				log.Printf("write %v failed: %v", rec, err)
 			}
-			
-			if recWriter.records != nil {
-				recWriter.records <- rec
-			}
 		}
-		if !ok { return }
+		if !ok { break }
 	}
+	
+	close(recWriter.exitChan)
 }
