@@ -37,6 +37,10 @@ func (walker *Walker) run() {
 
 	PostOrderWalk(walker.path, func(path string, info os.FileInfo, err error) error {
 		path = filepath.Clean(path)
+		if strings.Contains(path, INDEX_DIR) {
+			return nil
+		}
+		
 		parts := splitNames(path)
 //			log.Printf("parts: %v", parts)
 		depth := len(parts)
